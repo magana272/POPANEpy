@@ -10,16 +10,16 @@ signals for a given subject,differentiating by emotion
 - create_figure_one_per_study: Create figures for each subject in a study.
 """
 from typing import Any, TypeAlias
-from polars import col
-import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib.figure
+
 import matplotlib.axes
+import matplotlib.figure
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
+
 _Shape: TypeAlias = tuple[int, ...]
 _AnyShape: TypeAlias = tuple[Any, ...]
-
 
 TOATALFEATURELIST = ['ECG', 'EDA', 'SBP', 'DBP',
                      'respiration', 'temp', 'CO', 'TPR',
@@ -166,7 +166,7 @@ class POPANEFigureGenerator:
             emotion = emotion_colors[recording]['emotion']
             color = emotion_colors[recording]['color']
             recording_data['time_offset'] = recording_data['timestamp'] - \
-                recording_data['timestamp'].iloc[0]
+                                            recording_data['timestamp'].iloc[0]
             if start_end[0] is not None:
                 recording_data = recording_data[recording_data['time_offset']
                                                 >= start_end[0]]
@@ -215,7 +215,7 @@ class POPANEFigureGenerator:
             subject_id = subject_data.Subject_ID.iloc[0]
             fig = POPANEFigureGenerator.create_figure_for_subject(subject_data,
                                                                   subject_id=subject_id, figsize=(
-                                                                      10, 10), start_end=start_end)
+                    10, 10), start_end=start_end)
             if fig is not None:
                 figures.append(fig)
         return figures

@@ -1,16 +1,16 @@
 from typing import cast
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
 from matplotlib.axes import Axes
 from matplotlib.container import BarContainer
-import pandas
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
-import pandas as pd
-from emotion.dataloader import POPANEDataLoader, PopaneDataLoader
+
 from emotion import utils
-from emotion import utils
+from emotion.studies.dataloader import POPANEDataLoader
 
 
 def plot_pca(X: np.ndarray, y: np.ndarray) -> None:
@@ -32,7 +32,7 @@ def plot_pca(X: np.ndarray, y: np.ndarray) -> None:
     for i, emotion in enumerate(unique_emotions):
         mask = y == emotion
         plt.scatter(pca_result[mask, 0], pca_result[mask, 1], c=[
-                    palette[i]], label=emotion, s=1, alpha=0.7)
+            palette[i]], label=emotion, s=1, alpha=0.7)
 
     plt.title("PCA of Physiological Data from Study 1", fontsize=16)
     plt.xlabel("Principal Component 1", fontsize=12)
@@ -52,17 +52,21 @@ def get_unique_emotions_for_all_studies(popane_data_loader: POPANEDataLoader):
 
 def generate_emotion_presence_matrix(all_emotions, popane_data_loader: POPANEDataLoader):
     emotion_matrix = pd.DataFrame(0, index=[
-                                  'Study1', 'Study2', 'Study3', 'Study4', 'Study5', 'Study6', 'Study7'], columns=all_emotions)
+        'Study1', 'Study2', 'Study3', 'Study4', 'Study5', 'Study6', 'Study7'], columns=all_emotions)
     emotions_per_study = [
-        popane_data_loader.get_unique_emotions(i+1) for i in range(7)]
+        popane_data_loader.get_unique_emotions(i + 1) for i in range(7)]
     for i, study_emotions in enumerate(emotions_per_study):
         for emotion in study_emotions:
-            s = popane_data_loader.get_study_metadata(i+1)
+            s = popane_data_loader.get_study_metadata(i + 1)
             if s is None:
-                print(f"Metadata for study {i+1} is not available.")
+                print(f"Metadata for study {i + 1} is not available.")
                 continue
+            if s.FILE_NAME is None:
+                print(f"FILE_NAME for study {i + 1} is not available.")
+                continue
+            count = len([x for x in list(zip(s.EMOTION, s.FILE_NAME)) if  x[0] == emotion])
             emotion_matrix.loc[emotion_matrix.index[i],
-                               emotion] = s[s["Emotion"] == emotion]["File_Name"].nunique()
+            emotion] = count
     return emotion_matrix
 
 

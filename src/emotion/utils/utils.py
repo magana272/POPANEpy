@@ -22,7 +22,7 @@ def get_size(start_path='.', units='GB') -> dict[str, dict[str, float | int]]:
                     size_per_study[f[:2]]["File_Count"] += 1
     for study, values in size_per_study.items():
         if units == 'GB':
-            values["GB"] = values["GB"] / (1024**3)
+            values["GB"] = values["GB"] / (1024 ** 3)
             size_per_study[study] = values
         else:
             raise ValueError("Unsupported unit. Please use 'GB'.")

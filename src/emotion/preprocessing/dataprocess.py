@@ -1,28 +1,20 @@
-from re import X
-import re
-from typing import Any, TypeAlias, cast
-import pandas as pd
-from sklearn.base import BaseEstimator, TransformerMixin
-import numpy as np
-from scipy.ndimage import gaussian_filter1d
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
-import seaborn as sns
-
-from scipy.fft import fft, fftfreq
-from scipy.signal import find_peaks
-
-from multiprocessing import Pipe
-
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
-
-import polars as pl
 import gc
 
-from emotion.visualization import POPANEFigureGenerator
-from emotion.dataloader import POPANEDataLoader, PopaneDataLoader
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import polars as pl
+import seaborn as sns
+from matplotlib.lines import Line2D
+from scipy.fft import fft, fftfreq
+from scipy.ndimage import gaussian_filter1d
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.preprocessing import StandardScaler
+
 from emotion.preprocessing.frequency import get_dominant_frequency, calculate_signal_energy
+from emotion.studies.dataloader import POPANEDataLoader
+from emotion.visualization import POPANEFigureGenerator
+
 FEATURES = ["ECG", "EDA", "SBP", "DBP", "respiration", "temp"]
 
 
@@ -110,6 +102,10 @@ def visualize_transformations(study: int, subject_id: int, figsize: tuple = (15,
     popane_data_loader = POPANEDataLoader()
     subject = popane_data_loader.get_data_for_subject_from_study(
         study, subject_id)
+    if subject is None:
+        print(f"No data found for Study {study}, Subject_ID: {subject_id}")
+        return
+    subject = subject.to_dataframe()
     time_start, time_end = start_end
     scaler = StandardScaler()
     smooth = ECG_SmoothTransformer(sigma=sigma)
@@ -139,10 +135,10 @@ def visualize_transformations(study: int, subject_id: int, figsize: tuple = (15,
         for j, (transform_name, transform_data) in enumerate(transformations.items()):
             emotion_data = transform_data[emotion_mask].copy()
             emotion_data['time_offset'] = base_emotion['timestamp'] - \
-                base_emotion['timestamp'].iloc[0]
+                                          base_emotion['timestamp'].iloc[0]
             try:
                 emotion_data = emotion_data.loc[(emotion_data["time_offset"] < time_end) & (
-                    emotion_data["time_offset"] > time_start)].copy()
+                        emotion_data["time_offset"] > time_start)].copy()
                 POPANEFigureGenerator.plot_signals(emotion_data["time_offset"], emotion_data["ECG"],
                                                    title=transform_name, color=palette[i], axis=axes[j],
                                                    label=f"{emotion}")
@@ -159,13 +155,16 @@ def visualize_transformations(study: int, subject_id: int, figsize: tuple = (15,
     plt.show()
 
 
-def visualize_sigma_comparison(study, subject_id=None, sigmas=[1, 5, 10, 20, 50], figsize=(15, 8), time_start=None, time_end=None):
+def visualize_sigma_comparison(study, subject_id, sigmas=[1, 5, 10, 20, 50], figsize=(15, 8), time_start=None,
+                               time_end=None):
     popane_data_loader = POPANEDataLoader()
     subject = popane_data_loader.get_data_for_subject_from_study(
         study, subject_id)
+
     if subject is None:
         print(f"No data found for Study {study}, Subject_ID: {subject_id}")
         return
+    subject = subject.to_dataframe()
     palette = sns.color_palette("husl", n_colors=len(subject.Emotion.unique()))
     num_sigmas = len(sigmas)
     fig, axes = plt.subplots(num_sigmas, 1, figsize=figsize, sharex=True)
@@ -174,9 +173,9 @@ def visualize_sigma_comparison(study, subject_id=None, sigmas=[1, 5, 10, 20, 50]
     for i, emotion in enumerate(subject["Emotion"].unique()):
         subject_emotion = subject[subject["Emotion"] == emotion].copy()
         subject_emotion['time_offset'] = subject_emotion['timestamp'] - \
-            subject_emotion['timestamp'].iloc[0]
+                                         subject_emotion['timestamp'].iloc[0]
         subject_emotion = subject_emotion.loc[(subject_emotion["time_offset"] < time_end) & (
-            subject_emotion["time_offset"] > time_start)].copy()
+                subject_emotion["time_offset"] > time_start)].copy()
 
         for j, sigma in enumerate(sigmas):
             smooth = ECG_SmoothTransformer(sigma=sigma)
@@ -185,7 +184,8 @@ def visualize_sigma_comparison(study, subject_id=None, sigmas=[1, 5, 10, 20, 50]
             t = subject_emotion["time_offset"].astype(np.float32).to_numpy()
             ecg = subject_emotion["ECG"].astype(np.float32).to_numpy()
             POPANEFigureGenerator.plot_signals(t, ecg,
-                                               title=f"Sigma = {sigma}", color=palette[i], axis=axes[j], label=f"{emotion} (σ={sigma})")
+                                               title=f"Sigma = {sigma}", color=palette[i], axis=axes[j],
+                                               label=f"{emotion} (σ={sigma})")
 
     axes[0].legend(loc='upper left', fontsize=9, framealpha=0.9)
     fig.suptitle(
@@ -224,13 +224,13 @@ def clean_DBP(subject_data: pd.DataFrame) -> None:
     colors = sns.color_palette("husl", subject_data["Emotion"].nunique())
     color_dict = {emotion: colors[i] for i, emotion in enumerate(emotions)}
     subject_id = subject_data["Subject_ID"].unique()[0]
-    fig,  axs = plt.subplots(1, 2, figsize=(15, 10), sharey=True)
+    fig, axs = plt.subplots(1, 2, figsize=(15, 10), sharey=True)
     for subject_id in subject_data["Subject_ID"].unique():
         subject_data = subject_data[subject_data["Subject_ID"] == subject_id]
         for i, emotion in enumerate(subject_data["Emotion"].unique()):
             emotion_data = subject_data[subject_data["Emotion"] == emotion]
             emotion_data['time_offset'] = emotion_data['timestamp'] - \
-                emotion_data['timestamp'].iloc[0]
+                                          emotion_data['timestamp'].iloc[0]
             print(i, emotion, subject_data["File_Name"].unique())
             POPANEFigureGenerator.plot_signals(emotion_data.time_offset, emotion_data.DBP,
                                                color=color_dict[emotion], label=emotion, axis=axs[0])
@@ -238,7 +238,8 @@ def clean_DBP(subject_data: pd.DataFrame) -> None:
                 lambda x: apply_rollingmedian(x, 'DBP')).fillna(method="bfill").fillna(method="ffill")
             POPANEFigureGenerator.plot_signals(median_cleaned.time_offset, median_cleaned.DBP,
                                                color=color_dict[emotion], label=emotion, axis=axs[1])
-    fig.legend(handles=[Line2D([0], [0], color=color_dict[emotion], lw=2, label=emotion) for emotion in subject_data["Emotion"].unique()],
+    fig.legend(handles=[Line2D([0], [0], color=color_dict[emotion], lw=2, label=emotion) for emotion in
+                        subject_data["Emotion"].unique()],
                bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
     axs[0].set_title(f"Subject {subject_id} - Raw DBP Signals")
     axs[1].set_title(f"Subject {subject_id} - Median Filtered DBP Signals")
@@ -254,8 +255,8 @@ def plot_transformations(df, time, signal, title, color, axis, label=None):
     for subject_id in df["Subject_ID"].unique():
         subject_data = df[df["Subject_ID"] == subject_id]
         subject_data['time_offset'] = subject_data['timestamp'] - \
-            subject_data['timestamp'].iloc[0]
-        fig,  axs = plt.subplots(1, 2, figsize=(15, 10), sharey=True)
+                                      subject_data['timestamp'].iloc[0]
+        fig, axs = plt.subplots(1, 2, figsize=(15, 10), sharey=True)
         for i, emotion in enumerate(subject_data["Emotion"].unique()):
             emotion_data = subject_data[subject_data["Emotion"] == emotion]
             emotion_data = emotion_data[emotion_data["time_offset"] <= 10]
@@ -265,7 +266,8 @@ def plot_transformations(df, time, signal, title, color, axis, label=None):
                 lambda x: apply_rollingmedian(x, 'ECG')).fillna(method="bfill").fillna(method="ffill")
             POPANEFigureGenerator.plot_signals(median_cleaned.time_offset, median_cleaned.ECG,
                                                color=color_dict[emotion], label=emotion, axis=axs[1])
-        fig.legend(handles=[Line2D([0], [0], color=color_dict[emotion], lw=2, label=emotion) for emotion in subject_data["Emotion"].unique()],
+        fig.legend(handles=[Line2D([0], [0], color=color_dict[emotion], lw=2, label=emotion) for emotion in
+                            subject_data["Emotion"].unique()],
                    bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
         axs[0].set_title(f"Subject {subject_id} - Raw ECG Signals")
         axs[1].set_title(f"Subject {subject_id} - Median Filtered ECG Signals")
@@ -286,7 +288,8 @@ def create_aggregated_features(dataset, resample_window='0.1s', batch_size=10):
 
     for batch_idx in range(0, len(all_files), batch_size):
         batch_files = all_files[batch_idx:batch_idx + batch_size]
-        print(f"  Batch {batch_idx//batch_size + 1}/{(len(all_files)-1)//batch_size + 1}: Files {batch_idx+1}-{min(batch_idx+batch_size, len(all_files))}")
+        print(
+            f"  Batch {batch_idx // batch_size + 1}/{(len(all_files) - 1) // batch_size + 1}: Files {batch_idx + 1}-{min(batch_idx + batch_size, len(all_files))}")
 
         batch_data = []
         for file_name in batch_files:

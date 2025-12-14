@@ -1,19 +1,17 @@
-from re import A
-from typing import Any, cast
+from typing import cast
+
+import matplotlib.pyplot as plt
 # from numpy.typing import Unknown
 import numpy as np
-from scipy.signal import butter, filtfilt, find_peaks
-from scipy.signal import iirnotch
-from scipy.ndimage import gaussian_filter1d
-from scipy.fft import fft, fftfreq
-import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+from scipy.fft import fft, fftfreq
+from scipy.signal import butter, filtfilt, find_peaks
+from scipy.signal import iirnotch
 
-from emotion.dataloader import POPANEDataLoader
-# from emotion.preprocessing import (calculate_signal_energy,
-#                                    get_dominant_frequency)
 
+##########################################################
+# Preprocessing - Frequency Domain Filtering
 
 def mutlipass_filter(data, fs=500):
     filtered = highpass_0_5hz(data, fs)
@@ -52,15 +50,15 @@ def frequency_analysis(subject: pd.DataFrame):
         N = len(emotion_data)
         T = subject.timestamp[1] - subject.timestamp[0]  # sampling interval
         yf = fft(emotion_data)
-        xf = fftfreq(N, T)[:N//2]
+        xf = fftfreq(N, T)[:N // 2]
         dominant_freq = get_dominant_frequency(xf, yf)
         # dom_freq_singal_energy[emotion]['dominant_frequency'] = dominant_freq
         signal_energy = np.log2(calculate_signal_energy(yf))
         # dom_freq_singal_energy[emotion]['signal_energy'] = signal_energy
         print(f"Dominant Frequency for {emotion}: {dominant_freq} Hz")
         print(f"Signal Energy for {emotion}: {signal_energy}")
-        ax.plot(xf, (2.0/N * np.abs(cast(np.ndarray,
-                yf[0:N//2]))), label=emotion, color=color_dict[emotion])
+        ax.plot(xf, (2.0 / N * np.abs(cast(np.ndarray,
+                                           yf[0:N // 2]))), label=emotion, color=color_dict[emotion])
         ax.set_title('Frequency Spectrum of {}'.format(emotion))
         ax.set_xlabel('Frequency (kHz)')
         ax.set_ylabel('Normalized Magnitude')
@@ -68,14 +66,11 @@ def frequency_analysis(subject: pd.DataFrame):
         ax.set_ylim(0, 8)
         ax.legend()
     plt.show()
-##########################################################
-# Frequency Domain - FEature Extraction
-#########################################################
 
 
 def get_dominant_frequency(xf, yf):
     N = len(yf)
-    peaks, _ = find_peaks(np.abs(yf[:N//2]), height=0)
+    peaks, _ = find_peaks(np.abs(yf[:N // 2]), height=0)
     dominant_freq = xf[peaks[np.argmax(np.abs(yf[peaks]))]]
     return dominant_freq
 
@@ -91,7 +86,7 @@ def calculate_signal_energy(yf):
     Returns:
     - signal_energy: The calculated signal energy
     """
-    return np.sum(np.abs(yf)**2) / len(yf)
+    return np.sum(np.abs(yf) ** 2) / len(yf)
 
 
 class FrequencyDomainFeatures:

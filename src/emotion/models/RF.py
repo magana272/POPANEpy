@@ -1,4 +1,3 @@
-
 class EmotionRandomForest:
     def EmotionRandomForest(self):
         pass

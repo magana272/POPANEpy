@@ -2,50 +2,10 @@
 POPANE emotion study implementations
 """
 from dataclasses import dataclass
-import re
-from typing import Any, Generator, Optional, ClassVar, TYPE_CHECKING
-from numpy.f2py.symbolic import Op
+from typing import ClassVar
 import pandas as pd
-from polars import config
-from emotion.dataloader.popaneloader import POPANEDataLoader
-
-
-@dataclass
-class Subject:
-    """Represents a single subject in a study"""
-    STUDY_NAME: 'Study'
-    SUBJECT_ID: int
-    FILE_NAME: str
-    FILE_PATH: str
-    AGE: int
-    SEX: int
-    EMOTION: str
-
-    data: pd.DataFrame | Generator[pd.DataFrame, Any, None]
-
-    def __repr__(self):
-        return f"Subject(study={self.STUDY_NAME.config.number}, id={self.SUBJECT_ID})"
-
-    @property
-    def emotions(self) -> pd.Series:
-        """Get unique emotions for this subject"""
-        if isinstance(self.data, Generator):
-            return pd.Series(dtype=str)
-        if 'EMOTION' not in self.data:
-            return pd.Series(dtype=str)
-        return pd.Series(self.data['EMOTION'].unique())
-
-    def get_emotion_data(self, emotion: str) -> pd.DataFrame:
-        """Filter data by emotion"""
-        if isinstance(self.data, Generator):
-            return pd.DataFrame()
-        return self.data[self.data['EMOTION'] == emotion]
-
-    def get_measurements(self, measurements: list[str]) -> pd.DataFrame:
-        """Get specific measurements"""
-        if isinstance(self.data, Generator):
-            return pd.DataFrame()
-        return self.data[measurements]
+from emotion.studies.dataloader.popaneloader import POPANEDataLoader
+from emotion.studies.subject import Subject, POPANEMetadata
 
 
 @dataclass
@@ -54,7 +14,7 @@ class StudyConfig:
     number: int
     name: str
     measurements: tuple[str, ...]
-    dtypes: dict[str, str]
+    dtypes: dict[str, str] | None
 
     @property
     def columns(self) -> set[str]:
@@ -70,82 +30,45 @@ class Study:
         self.loader = data_loader
         self._subjects: dict[int, 'Subject'] = {}
 
-    def get_subject(self, subject_id: int, emotion: str) -> 'Subject':
+    def get_subject(self, subject_id: int, emotion: str | None = None) -> Subject | None:
         if subject_id not in self._subjects:
-            df = self.loader.get_data_for_subject_from_study(
-                self.config.number, subject_id
-            )
-            study_meta = self.loader.get_study_metadata(self.config.number)
-
-            if study_meta is None:
+            df = self.loader.get_subject_df(self.config.number, subject_id)
+            subject_meta = self.loader.get_subject_metadata(
+                self.config.number, subject_id)
+            if subject_meta is None:
                 raise ValueError(
                     f"Study metadata for Study {self.config.number} not found.")
-            subject_meta = study_meta[(study_meta['SUBJECT_ID'] == subject_id) & (
-                study_meta['EMOTION'] == emotion)]
-            print(f"Subject Meta:\n{subject_meta}")
-            if df is None:
-                raise ValueError(
-                    f"Subject {subject_id} not found in Study {self.config.number}")
-            self._subjects[subject_id] = Subject(
-                STUDY_NAME=self,
-                SUBJECT_ID=subject_id,
-                FILE_NAME=subject_meta.FILE_NAME.values[0] if not subject_meta.empty else '',
-                FILE_PATH=subject_meta.FILE_PATH.values[0] if not subject_meta.empty else '',
-                AGE=subject_meta.AGE.values[0] if not subject_meta.empty else 0,
-                SEX=subject_meta.SEX.values[0] if not subject_meta.empty else 0,
-                EMOTION=emotion,
-                data=df
-            )
-        return self._subjects[subject_id]
+            return Subject(subject_meta)
 
-    def get_subject_lazy(self, subject_id: int, measurements: tuple[str, ...],
-                         dtypes: dict[str, str], emotion: str) -> 'Subject':
-        df = self.loader.get_data_for_subject_from_study_lazy(
-            self.config.number, str(subject_id), measurements, dtypes
-        )
-        study_meta = self.loader.get_study_metadata(self.config.number)
+    def get_subject_ids(self) -> list[int]:
+        return self.loader.get_subject_ids(self.config.number)
 
-        if study_meta is None:
-            raise ValueError(
-                f"Study metadata for Study {self.config.number} not found.")
-        subject_meta = study_meta[study_meta['SUBJECT_ID']
-                                  == subject_id].iloc[0]
-        if df is None:
-            raise ValueError(
-                f"Subject {subject_id} not found in Study {self.config.number}")
-        self._subjects[subject_id] = Subject(
-            STUDY_NAME=self,
-            SUBJECT_ID=subject_id,
-            FILE_NAME=subject_meta.get('FILE_NAME', ''),
-            FILE_PATH=subject_meta.get('FILE_PATH', ''),
-            AGE=subject_meta.get('AGE', 0),
-            SEX=subject_meta.get('SEX', 0),
-            EMOTION=emotion,
-            data=df
-        )
-        return self._subjects[subject_id]
+    def get_study_metadata(self) -> POPANEMetadata | None:
+        return self.loader.get_study_metadata(self.config.number)
 
-    def get_measurements(self) -> dict[str, str]:
+    def get_unique_emotions(self) -> list[str]:
+        return self.loader.get_unique_emotions(self.config.number)
+
+    def get_measurements(self) -> dict[str, str] | None:
         return self.config.dtypes
 
-    def get_all_subjects(self) -> list[Optional['Subject']]:
-        subject_ids = self.loader.get_subject_ids(self.config.number)
-        metadata = self.loader.get_study_metadata(self.config.number)
-        res = []
-        for sid in subject_ids:
-            if metadata is not None:
-                subject_meta = metadata[metadata['SUBJECT_ID'] == sid]
-                if subject_meta.empty:
-                    continue
-                emotions = subject_meta['EMOTION'].unique()
-                for emotion in emotions:
-                    res.append(self.get_subject_lazy(sid, self.config.measurements,
-                                                     self.config.dtypes, emotion=emotion))
-        return res
+    def get_all_subjects(self, study_numbers: list[int]) -> dict[int, Subject | None]:
+        return self.loader.get_all_subjects_from_study(self.config.number, self.get_unique_emotions())
+    def get_all_subjects_from_study(self, study_number: int, emotions: list[str]) -> dict[int, Subject | None]:
+        return self.loader.get_all_subjects_from_study(study_number, emotions)
 
     @property
     def available_measurements(self) -> tuple[str, ...]:
         return self.config.measurements
+
+    def __repr__(self):
+        return f"Study(number={self.config.number}, name={self.config.name})"
+
+    def __str__(self):
+        return f"Study {self.config.number}: {self.config.name}"
+
+    def __len__(self):
+        return len(self.get_subject_ids())
 
 
 class Study1(Study):
@@ -246,7 +169,6 @@ class Study7(Study):
     )
 
 
-# Registry for easy access
 STUDY_REGISTRY = {
     1: Study1,
     2: Study2,

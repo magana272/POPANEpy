@@ -1,18 +1,14 @@
-from concurrent.futures import ThreadPoolExecutor
-import threading
+import logging
 import os
-from numpy import insert
-import requests
-import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
-# from emotion.dataloader.popaneloader import POPANEDataLoader
-# from emotion.studys.study import Study
 import duckdb
 
-from emotion.dataloader import POPANEDataLoader
+from emotion.studies.dataloader.popaneloader import POPANEDataLoader
 
 
-class PROPANEdb(POPANEDataLoader):
+class POPANEDB(POPANEDataLoader):
     __downloads_completed: bool = False
     __number_of_downloads: int = 0
     __duckdbpath: str = "data/processed/propane_emotion.db"
@@ -51,58 +47,108 @@ class PROPANEdb(POPANEDataLoader):
 
     def __init__(self,
                  data_dir: str | None = "data/raw/"):
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s [%(levelname)s] %(message)s',
+            handlers=[
+                logging.FileHandler('data/processed/db_creation.log'),
+                logging.StreamHandler()
+            ]
+        )
         super().__init__(data_dir)
 
     def createDB(self):
+        start_time = datetime.now()
+        logging.info("Starting POPANE database creation")
+
         db = duckdb.connect(database=self.__duckdbpath, read_only=False)
-        threads = os.cpu_count()
+        db.execute(f"SET threads TO {os.cpu_count()}")
 
-        for study_number in range(1, 8):
-            measurements, dtypes = self.study_columns_map[study_number]
-            table_name = f"study{study_number}"
-            columns = dict(zip(measurements, dtypes))
-            self.create_table(db, table_name, columns)
+        try:
+            import psutil
+            available_gb = int(
+                psutil.virtual_memory().available / (1024 ** 3) * 0.7)
+            db.execute(f"SET memory_limit = '{available_gb}GB'")
+            logging.info(
+                f"Using {available_gb}GB memory, {os.cpu_count()} threads")
+        except ImportError:
+            db.execute("SET memory_limit = '8GB'")
+            logging.info("Using 8GB memory (default)")
 
-        self.__threadpool = ThreadPoolExecutor(max_workers=threads)
         popane_data_loader = POPANEDataLoader()
-        study_files = []
+        total_files = 0
+
         for study_number in range(1, 8):
             study_meta = popane_data_loader.get_study_metadata(study_number)
             if study_meta is not None:
-                for file_path in study_meta['file_path'].tolist():
-                    study_files.append(
-                        [{"file_path": file_path, "study_number": study_number}])
+                if study_meta.FILE_PATH is None:
+                    logging.warning(
+                        f"Study {study_number} has no FILE_PATH in metadata, skipping.")
+                    continue
+                file_paths = list(study_meta.FILE_PATH)
+                logging.info(f"Study {study_number}: {len(file_paths)} files")
+                if file_paths:
+                    db.execute(f"""
+                        CREATE TABLE IF NOT EXISTS study{study_number} AS 
+                        SELECT * FROM read_csv_auto(
+                            '{file_paths[0]}',
+                            skip=9,
+                            header=true,
+                            delim=',',
+                            sample_size=-1
+                        )
+                        WHERE 1=0;  -- Create empty table with schema
+                    """)
+                    logging.info(f"Created study{study_number} table")
 
-        with self.__threadpool as executor:
-            futures = []
-            while not study_files == []:
-                file_study = study_files.pop()
-                futures.append(executor.submit(
-                    self.__process_study_to_db, file_study[0], file_study[0][1], db))
-            for future in futures:
-                future.result()
+                # Batch insert all files
+                for i, file_path in enumerate(file_paths):
+                    self.__process_study_to_db(file_path, study_number, db)
+                    total_files += 1
+                    if (i + 1) % 10 == 0:
+                        logging.info(
+                            f"  Loaded {i + 1}/{len(file_paths)} files")
+
+        elapsed = (datetime.now() - start_time).total_seconds()
+        logging.info(
+            f"Complete in {elapsed:.1f}s ({total_files} files, {total_files / elapsed:.1f} files/sec)")
+        return db
 
     def create_table(self, db: duckdb.DuckDBPyConnection, table_name: str, columns: dict):
         columns_def = ", ".join(
             [f"{col} {dtype}" for col, dtype in columns.items()])
         create_table_query = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns_def});"
         db.execute(create_table_query)
+        logging.info(f"Created table: {table_name}")
 
     def connect_db(self) -> duckdb.DuckDBPyConnection:
-        db = duckdb.connect(database=self.__duckdbpath, read_only=False)
+        db = duckdb.connect(database=self.__duckdbpath, read_only=False,
+                            config={'threads': os.cpu_count() or 24, 'memory_limit': '12.8GB'})
         return db
 
     def __process_study_to_db(self, studypath: str, study_number: int, db: duckdb.DuckDBPyConnection):
-        insert_query = f"""INSERT INTO study{study_number} 
-                   SELECT * FROM read_csv_auto('{studypath[0]}');
-                   """
-        db.execute(insert_query)
+        try:
+            db.execute(f"""
+                INSERT INTO study{study_number} 
+                SELECT * FROM read_csv_auto(
+                    '{studypath}', 
+                    skip=9, 
+                    header=true, 
+                    delim=',',
+                    sample_size=-1,
+                    parallel=true,
+                    ignore_errors=false
+                );
+            """)
+        except Exception as e:
+            file_name = os.path.basename(studypath)
+            logging.error(f"Error loading {file_name}: {e}")
 
 
 def main():
     """Test loading Study 1 Subject 6 data into DuckDB and export to Parquet"""
 
-    createDB = PROPANEdb()
+    createDB = POPANEDB()
     db = createDB.connect_db()
     createDB.create_table(db, "study1", dict(
         zip(createDB.study1colums, createDB.s1_dtype)))
