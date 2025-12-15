@@ -10,7 +10,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
 from emotion import utils
-from emotion.studies.dataloader import POPANEDataLoader
+from emotion.dataloader import POPANEDataLoader
 
 
 def plot_pca(X: np.ndarray, y: np.ndarray) -> None:
@@ -58,15 +58,7 @@ def generate_emotion_presence_matrix(all_emotions, popane_data_loader: POPANEDat
     for i, study_emotions in enumerate(emotions_per_study):
         for emotion in study_emotions:
             s = popane_data_loader.get_study_metadata(i + 1)
-            if s is None:
-                print(f"Metadata for study {i + 1} is not available.")
-                continue
-            if s.FILE_NAME is None:
-                print(f"FILE_NAME for study {i + 1} is not available.")
-                continue
-            count = len([x for x in list(zip(s.EMOTION, s.FILE_NAME)) if  x[0] == emotion])
-            emotion_matrix.loc[emotion_matrix.index[i],
-            emotion] = count
+            emotion_matrix.loc[emotion_matrix.index[i], emotion] = s[s["EMOTION"] == emotion]["FILE_NAME"].nunique()
     return emotion_matrix
 
 

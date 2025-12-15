@@ -2,14 +2,17 @@
 POPANE emotion studies - Study and Subject classes
 """
 __version__ = "0.1.0"
+
 from emotion.studies.study import (
     Study, StudyConfig,
     Study1, Study2, Study3, Study4, Study5, Study6, Study7,
     STUDY_REGISTRY, get_study
 )
+from emotion.studies.study_config import (StudyConfig)
 from emotion.studies.subject import (
     Subject
 )
+
 
 def __getattr__(name):
     if name == "Study":
@@ -35,6 +38,7 @@ def __getattr__(name):
     if name == "__version__":
         return __version__
     return None
+
 
 __all__ = [
     "Study",

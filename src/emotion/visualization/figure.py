@@ -27,29 +27,10 @@ TOATALFEATURELIST = ['ECG', 'EDA', 'SBP', 'DBP',
 
 
 class POPANEFigureGenerator:
-    """
-    A class to generate figures for POPANE emotion study data.
-    """
     feature_plot_functions = {}
 
     def __init__(self):
         self._set_up_figure_styles()
-
-    def _set_up_figure_styles(self):
-        """
-        Set up the default styles for the figures.
-        """
-        sns.set_style("whitegrid")
-        plt.rcParams.update({
-            'figure.figsize': (12, 8),
-            'axes.titlesize': 16,
-            'axes.titleweight': 'bold',
-            'axes.labelsize': 14,
-            'lines.linewidth': 2,
-            'lines.markersize': 6,
-            'legend.fontsize': 12,
-            'font.size': 12
-        })
         self.feature_plot_functions = {
             'ECG': {'plotfn': self.plot_signals,
                     'title': 'ECG Signal',
@@ -83,10 +64,6 @@ class POPANEFigureGenerator:
                     'title': 'Total Peripheral Resistance',
                     'y_label': 'TPR\n(mmHg*min/l)',
                     'color': 'cyan'},
-            'affect': {'plotfn': self.plot_signals,
-                       'title': 'Affect',
-                       'y_label': 'Affect',
-                       'color': 'magenta'},
             'dz': {'plotfn': self.plot_signals,
                    'title': 'dz Signal',
                    'y_label': 'dz\n(ohm)',
@@ -98,27 +75,46 @@ class POPANEFigureGenerator:
             'dzdt': {'plotfn': self.plot_signals,
                      'title': 'dzdt Signal',
                      'y_label': 'dzdt\n(ohm/s)',
-                     'color': 'black'}
+                     'color': 'black'},
+            'affect': {"plotfn": self.plot_signals,
+                       "title": "Affect Signal",
+                       "y_label": "Affect",
+                       "color": "green"},
         }
 
+    def _set_up_figure_styles(self):
+        sns.set_style("whitegrid")
+        plt.rcParams.update({
+            'figure.figsize': (12, 8),
+            'axes.titlesize': 16,
+            'axes.titleweight': 'bold',
+            'axes.labelsize': 14,
+            'lines.linewidth': 2,
+            'lines.markersize': 6,
+            'legend.fontsize': 12,
+            'font.size': 12
+        })
+
     @staticmethod
-    def plot_signals(t: np.ndarray, signal: np.ndarray,
+    def plot_signals(t: np.ndarray, signal: np.ndarray, color: str = 'green', label="label", title=None, axis=None,
                      **kwargs) -> matplotlib.axes.Axes | Any:
         """
         Plot a generic
         signal over time.
         """
-        title = kwargs.get('title', 'Signal')
+        if title is None:
+            title = 'Signal over Time'
         y_label = kwargs.get('y_label', 'Value')
-        color = kwargs.get('color', 'green')
-        label = kwargs.get('label', None)
-        axis = kwargs.get('axis', None)
+        if color is None:
+            color = 'green'
+        if label is None:
+            label = 'Signal'
         legend = kwargs.get('legend', True)
         linestyle = kwargs.get('linestyle', '-')
         if axis is None:
             _, axis = plt.subplots(figsize=(10, 4))
-        axis.plot(t, signal, color=color, label=label,
-                  linestyle=linestyle, **kwargs)
+        axis.plot(t, signal, label=label,
+                  linestyle=linestyle, color=color)
         axis.set_title(title, x=0.85, y=1.0, pad=-14,
                        fontsize=15, fontweight='bold')
         axis.set_ylabel(y_label, fontsize=12)
@@ -131,10 +127,8 @@ class POPANEFigureGenerator:
     def create_figure_for_subject(df: pd.DataFrame, subject_id: int,
                                   start_end=(0, 10),
                                   figsize=(16, 12)) -> matplotlib.figure.Figure | None:
-        """ 
-        Plot physiological signals for a given subject, differentiating by emotion.
-        """
-        subject_data = df[df['Subject_ID'] == subject_id].copy()
+        ppg = POPANEFigureGenerator()
+        subject_data = df[df.SUBJECT_ID == subject_id].copy()
         if len(subject_data) == 0:
             print(f"No data found for Subject_ID: {subject_id}")
             return None
@@ -142,14 +136,12 @@ class POPANEFigureGenerator:
         total_feature_list = TOATALFEATURELIST
         features_in_data: list[str] = [feature for feature in subject_data.columns if
                                        feature in total_feature_list]
-        unique_recordings = subject_data['File_Name'].unique()
-        # emotions = subject_data['Emotion'].unique()
-        study = subject_data['Study_name'].iloc[0]
+        unique_emotion = subject_data.EMOTION.unique()
+        study = subject_data.STUDY_NAME.iloc[0]
         emotion_colors = {}
-        palette = sns.color_palette("husl", n_colors=len(unique_recordings))
-        for i, recording in enumerate(unique_recordings):
-            emotion = subject_data[subject_data['File_Name']
-                                   == recording]['Emotion'].iloc[0]
+        palette = sns.color_palette("husl", n_colors=len(unique_emotion))
+        for i, recording in enumerate(unique_emotion):
+            emotion = subject_data.EMOTION.iloc[0]
             emotion_colors[recording] = {
                 'color': palette[i], 'emotion': emotion}
         fig = plt.figure(figsize=figsize)
@@ -160,10 +152,11 @@ class POPANEFigureGenerator:
         else:
             axes_dict: dict[matplotlib.axes.Axes, str] = dict(
                 zip(axes, features_in_data))
-        for recording in unique_recordings:
-            recording_data = subject_data[subject_data['File_Name'] == recording].copy(
+        for recording in unique_emotion:
+            recording_data = subject_data[subject_data.EMOTION == recording].copy(
             )
             emotion = emotion_colors[recording]['emotion']
+            print(emotion, recording)
             color = emotion_colors[recording]['color']
             recording_data['time_offset'] = recording_data['timestamp'] - \
                                             recording_data['timestamp'].iloc[0]
@@ -175,10 +168,10 @@ class POPANEFigureGenerator:
                                                 <= start_end[1]]
             for iax, (ax, feature) in enumerate(axes_dict.items()):
                 if feature in recording_data.columns:
-                    feature_plot_function = POPANEFigureGenerator.feature_plot_functions[
+                    feature_plot_function = ppg.feature_plot_functions[
                         feature]["plotfn"]
-                    title = POPANEFigureGenerator.feature_plot_functions[feature]["title"]
-                    y_label = POPANEFigureGenerator.feature_plot_functions[feature]["y_label"]
+                    title = ppg.feature_plot_functions[feature]["title"]
+                    y_label = ppg.feature_plot_functions[feature]["y_label"]
                     if feature_plot_function is not None:
                         feature_plot_function(
                             recording_data['time_offset'],
@@ -205,11 +198,6 @@ class POPANEFigureGenerator:
     @staticmethod
     def create_figure_one_per_study(study_data_dict: dict[str, pd.DataFrame],
                                     start_end=(0, 10)) -> list[matplotlib.figure.Figure]:
-        """
-        Docstring for create_figure_one_per_study
-        :param study_data_dict: Description
-        :type study_data_dict: dict
-        """
         figures = []
         for _, (_, subject_data) in enumerate(study_data_dict.items()):
             subject_id = subject_data.Subject_ID.iloc[0]

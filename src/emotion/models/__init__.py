@@ -1,4 +1,4 @@
-from emotion.models.RF import EmotionRandomForest
+from emotion.models.random_forest import EmotionRandomForest
 
 __version__ = "0.1.0"
 

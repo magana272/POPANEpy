@@ -5,7 +5,7 @@ from datetime import datetime
 
 import duckdb
 
-from emotion.studies.dataloader.popaneloader import POPANEDataLoader
+from emotion.dataloader.popaneloader import POPANEDataLoader
 
 
 class POPANEDB(POPANEDataLoader):
@@ -66,8 +66,7 @@ class POPANEDB(POPANEDataLoader):
 
         try:
             import psutil
-            available_gb = int(
-                psutil.virtual_memory().available / (1024 ** 3) * 0.7)
+            available_gb = 8
             db.execute(f"SET memory_limit = '{available_gb}GB'")
             logging.info(
                 f"Using {available_gb}GB memory, {os.cpu_count()} threads")
@@ -89,16 +88,19 @@ class POPANEDB(POPANEDataLoader):
                 logging.info(f"Study {study_number}: {len(file_paths)} files")
                 if file_paths:
                     db.execute(f"""
-                        CREATE TABLE IF NOT EXISTS study{study_number} AS 
-                        SELECT * FROM read_csv_auto(
-                            '{file_paths[0]}',
-                            skip=9,
-                            header=true,
-                            delim=',',
-                            sample_size=-1
-                        )
-                        WHERE 1=0;  -- Create empty table with schema
-                    """)
+                               CREATE TABLE IF NOT EXISTS study{study_number} AS 
+                                SELECT
+                                    CAST(NULL AS INTEGER) AS Subject_ID,
+                                    *
+                                FROM read_csv_auto(
+                                    '{file_paths[0]}',
+                                    skip=9,
+                                    header=true,
+                                    delim=',',
+                                    sample_size=-1
+                                )
+                                WHERE 1=0;
+                                """)
                     logging.info(f"Created study{study_number} table")
 
                 # Batch insert all files
@@ -123,14 +125,25 @@ class POPANEDB(POPANEDataLoader):
 
     def connect_db(self) -> duckdb.DuckDBPyConnection:
         db = duckdb.connect(database=self.__duckdbpath, read_only=False,
-                            config={'threads': os.cpu_count() or 24, 'memory_limit': '12.8GB'})
+                            config={'threads': os.cpu_count() or 24, 'memory_limit': '8GB'})
         return db
+
+    def _extract_subject_id(self, path: str) -> int:
+        with open(path, "r") as f:
+            for line in f:
+                if line.startswith("#Subject_ID"):
+                    return int(line.strip().split(",")[1])
+        raise ValueError(f"Subject_ID not found in {path}")
 
     def __process_study_to_db(self, studypath: str, study_number: int, db: duckdb.DuckDBPyConnection):
         try:
+            subject_id = self._extract_subject_id(studypath)
             db.execute(f"""
-                INSERT INTO study{study_number} 
-                SELECT * FROM read_csv_auto(
+                INSERT INTO study{study_number}
+                SELECT
+                    {subject_id} AS Subject_ID,
+                    *
+                FROM read_csv_auto(
                     '{studypath}', 
                     skip=9, 
                     header=true, 

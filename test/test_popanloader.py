@@ -1,12 +1,21 @@
-import dataclasses
-
-import emotion.studies.dataloader.popaneloader as popane_data_loader
-from emotion.studies.study import Subject
-
+"""
+Comprehensive tests for POPANE emotion analysis package
+"""
+import os.path
 import unittest
+import dataclasses
+import pandas as pd
+import numpy as np
+
+import emotion.dataloader.popaneloader as popane_data_loader
+from emotion.studies.subject import Subject
+from emotion.preprocessing.dataprocess import ECGSmoothTransformer, window_data
+from emotion.visualization.figure import POPANEFigureGenerator
+from emotion.models.random_forest import EmotionRandomForest
+from emotion import POPANE
 
 
-class test_POPANEMETADATALoader(unittest.TestCase):
+class TestPOPANEMETADATALoader(unittest.TestCase):
     def setUp(self):
         self.loader = popane_data_loader.POPANEMETADataLoader()
         
@@ -44,71 +53,70 @@ class test_POPANEDataLoader(unittest.TestCase):
     def test_study2_metadata(self):
         study2_meta = self.loader.get_study_metadata(2)
         if study2_meta is not None:
-            study2_cols = list(map(lambda x: x.upper, ["subject_id", "sex", "age", "height", "weight", "stimuli1", "stimuli2",
-                                               "study_name", "file_name", "emotion", "file_path"]))
+            study2_cols = ["SUBJECT_ID", "SEX", "AGE", "HEIGHT", "WEIGHT", "STIMULI1", "STIMULI2",
+                                               "STUDY_NAME", "FILE_NAME", "EMOTION", "FILE_PATH"]
             for col in study2_cols:
-                self.assertIn(col, dataclasses.asdict(study2_meta).keys())
+                self.assertIn(col, study2_meta.columns)
     def test_study3_metadata(self):
         study3_meta = self.loader.get_study_metadata(3)
         if study3_meta is not None:
-            study3_cols = list(map(lambda x: x.upper, ["subject_id", "sex", "age", "height", "weight",
-                                               "stimuli1", "stimuli2", "study_name", "file_name", "emotion", "file_path"]))
+            study3_cols = ["SUBJECT_ID", "SEX", "AGE", "HEIGHT", "WEIGHT",
+                                               "STIMULI1", "STIMULI2", "STUDY_NAME", "FILE_NAME", "EMOTION", "FILE_PATH"]
             for col in study3_cols:
-                self.assertIn(col, study3_meta.columns)
-            self.assertEqual(len(study3_meta.columns), 11)
+                self.assertIn(col, study3_meta.columns) # type: ignore
+            self.assertEqual(len(study3_meta.columns), 11) # type: ignore
 
     def test_study4_metadata(self):
         study4_meta = self.loader.get_study_metadata(4)
         if study4_meta is not None:
-            study4_cols = list(map(str.upper, ["subject_id", "sex", "age", "height", "weight", "stimuli",
-                                               "study_name", "file_name", "emotion", "file_path"]))
+            study4_cols = ["SUBJECT_ID", "SEX", "AGE", "HEIGHT", "WEIGHT", "STIMULI",
+                                               "STUDY_NAME", "FILE_NAME", "EMOTION", "FILE_PATH"]
             for col in study4_cols:
-                self.assertIn(col, study4_meta.columns)
-            self.assertEqual(len(study4_meta.columns), 10)
+                self.assertIn(col, study4_meta.columns) # type: ignore
+            self.assertEqual(len(study4_meta.columns), 10) # type: ignore
 
     def test_study5_metadata(self):
         study5_meta = self.loader.get_study_metadata(5)
         if study5_meta is not None:
-            study5_cols = list(map(str.upper, ["subject_id", "sex", "age", "height", "weight",
-                                               "stimuli1", "stimuli2", "stimuli3", "study_name",
-                                               "file_name", "emotion", "file_path"]))
+            study5_cols =   ["SUBJECT_ID", "SEX", "AGE", "HEIGHT", "WEIGHT",
+                                               "STIMULI1", "STIMULI2", "STIMULI3", "STUDY_NAME",
+                                               "FILE_NAME", "EMOTION", "FILE_PATH"]
             for col in study5_cols:
-                self.assertIn(col, study5_meta.columns)
-            self.assertEqual(len(study5_meta.columns), 12)
+                self.assertIn(col, study5_meta.columns) # type: ignore
+            self.assertEqual(len(study5_meta.columns), 12) # type: ignore
 
     def test_study6_metadata(self):
         study6_meta = self.loader.get_study_metadata(6)
         if study6_meta is not None:
-            study6_cols = list(map(str.upper, ["subject_id", "sex", "age", "height", "weight", "stimuli1", "stimuli2",
-                                               "stimuli3", "stimuli4", "stimuli5", "stimuli6",
-                                               "study_name", "file_name", "emotion", "file_path"]))
+            study6_cols = ["SUBJECT_ID", "SEX", "AGE", "HEIGHT", "WEIGHT", "STIMULI1", "STIMULI2",
+                                               "STIMULI3", "STIMULI4", "STIMULI5", "STIMULI6",
+                                               "STUDY_NAME", "FILE_NAME", "EMOTION", "FILE_PATH"]
             for col in study6_cols:
-                self.assertIn(col, study6_meta.columns)
-            self.assertEqual(len(study6_meta.columns), 15)
+                self.assertIn(col, study6_meta.columns) # pyright: ignore[reportArgumentType]
+            self.assertEqual(len(study6_meta.columns), 15) # type: ignore
 
     def test_study7_metadata(self):
         study7_meta = self.loader.get_study_metadata(7)
         if study7_meta is not None:
-            study7_cols = list(map(str.upper, ["subject_id", "sex", "age", "height", "weight", "stimuli1", "stimuli2",
-                                               "stimuli3", "stimuli4", "stimuli5",
-                                               "study_name", "file_name", "emotion", "file_path"]))
+            study7_cols = ["SUBJECT_ID", "SEX", "AGE", "HEIGHT", "WEIGHT", "STIMULI1", "STIMULI2",
+                                               "STIMULI3", "STIMULI4", "STIMULI5",
+                                               "STUDY_NAME", "FILE_NAME", "EMOTION", "FILE_PATH"]
             for col in study7_cols:
-                self.assertIn(col, study7_meta.columns)
-            self.assertEqual(len(study7_meta.columns), 14)
+                self.assertIn(col, study7_meta.columns) # type: ignore
+            self.assertEqual(len(study7_meta.columns), 14) # pyright: ignore[reportArgumentType]
 
     def test_get_data_for_subject_from_study(self):
-        subject_data: Subject |None = self.loader.get_data_for_subject_from_study(1, 1)
+        subject_data: pd.DataFrame = self.loader.get_data_for_subject_from_study(1, 1)
         if subject_data is not None:
-            subject_data_df = subject_data.to_dataframe()
-            self.assertIn('TIMESTAMP', subject_data_df.columns)
-            self.assertIn('AFFECT', subject_data_df.columns)
-            self.assertIn('ECG', subject_data_df.columns)
-            self.assertIn('EDA', subject_data_df.columns)
-            self.assertIn('TEMP', subject_data_df.columns)
-            self.assertIn('RESPIRATION', subject_data_df.columns)
-            self.assertIn('SBP', subject_data_df.columns)
-            self.assertIn('DBP', subject_data_df.columns)
-            self.assertIn('MARKER', subject_data_df.columns)
+            self.assertIn('timestamp', subject_data.columns)
+            self.assertIn('affect', subject_data.columns)
+            self.assertIn('ECG', subject_data.columns)
+            self.assertIn('EDA', subject_data.columns)
+            self.assertIn('temp', subject_data.columns)
+            self.assertIn('respiration', subject_data.columns)
+            self.assertIn('SBP', subject_data.columns)
+            self.assertIn('DBP', subject_data.columns)
+            self.assertIn('marker', subject_data.columns)
         self.assertIsNotNone(subject_data)
 # if __name__ == '__main__':
 #     unittest.main()

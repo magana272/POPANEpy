@@ -1,4 +1,4 @@
-from emotion.studies.dataloader.popaneloader import POPANEDataLoader
+from emotion.dataloader.popaneloader import POPANEDataLoader
 
 __version__ = "0.1.0"
 

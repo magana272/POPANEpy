@@ -39,13 +39,13 @@ def notch_filter(data, freq, fs=500, Q=30):
 
 def frequency_analysis(subject: pd.DataFrame):
     dom_freq_singal_energy = {emotion: {}
-                              for emotion in subject["Emotion"].unique()}
-    colors = sns.color_palette("husl", subject["Emotion"].nunique())
+                              for emotion in subject["EMOTION"].unique()}
+    colors = sns.color_palette("husl", subject["EMOTION"].nunique())
     color_dict = {emotion: colors[i]
-                  for i, emotion in enumerate(subject["Emotion"].unique())}
+                  for i, emotion in enumerate(subject["EMOTION"].unique())}
     fig, ax = plt.subplots(figsize=(12, 4))
-    for i, emotion in enumerate(subject["Emotion"].unique()):
-        emotion_data = subject[subject["Emotion"] == emotion]
+    for i, emotion in enumerate(subject["EMOTION"].unique()):
+        emotion_data = subject[subject["EMOTION"] == emotion]
         emotion_data = emotion_data['DBP'].values
         N = len(emotion_data)
         T = subject.timestamp[1] - subject.timestamp[0]  # sampling interval
@@ -80,11 +80,6 @@ def calculate_signal_energy(yf):
     Signal energy gives an overall measure of the intensity of variations in the accelerometer data.
     It's calculated as the sum of the squared magnitudes of the FFT results.
 
-    Parameters:
-    - yf: FFT result array
-
-    Returns:
-    - signal_energy: The calculated signal energy
     """
     return np.sum(np.abs(yf) ** 2) / len(yf)
 

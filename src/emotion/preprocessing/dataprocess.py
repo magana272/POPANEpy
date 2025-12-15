@@ -11,8 +11,8 @@ from scipy.ndimage import gaussian_filter1d
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.preprocessing import StandardScaler
 
+from emotion.dataloader import POPANEDataLoader
 from emotion.preprocessing.frequency import get_dominant_frequency, calculate_signal_energy
-from emotion.studies.dataloader import POPANEDataLoader
 from emotion.visualization import POPANEFigureGenerator
 
 FEATURES = ["ECG", "EDA", "SBP", "DBP", "respiration", "temp"]
@@ -27,7 +27,7 @@ class POPANEDataProcessor:
         pass
 
 
-def window_data(self, dataset: pd.DataFrame,
+def window_data(dataset: pd.DataFrame,
                 window__size=1000, steps=1000) -> tuple[np.ndarray, np.ndarray]:
     """Convert the dataset into overlapping windows for model training.
     Parameters:
@@ -59,7 +59,7 @@ def window_data(self, dataset: pd.DataFrame,
     return x, y
 
 
-class ECG_SmoothTransformer(BaseEstimator, TransformerMixin):
+class ECGSmoothTransformer(BaseEstimator, TransformerMixin):
     """
     Docstring for ECG_SmoothTransformer
 
@@ -108,7 +108,7 @@ def visualize_transformations(study: int, subject_id: int, figsize: tuple = (15,
     subject = subject.to_dataframe()
     time_start, time_end = start_end
     scaler = StandardScaler()
-    smooth = ECG_SmoothTransformer(sigma=sigma)
+    smooth = ECGSmoothTransformer(sigma=sigma)
     features = ["ECG", "EDA", "SBP", "DBP"]
     if subject is None:
         print(f"No data found for Study {study}, Subject_ID: {subject_id}")
@@ -146,9 +146,7 @@ def visualize_transformations(study: int, subject_id: int, figsize: tuple = (15,
                 print(emotion_data.columns)
                 print(emotion_data.head())
                 print(f"Error processing emotion data: {e}")
-    # for ax in axes:
     axes[0].legend(loc='upper left', fontsize=9, framealpha=0.9)
-
     fig.suptitle(
         f"Subject {subject_id} - Transformation Comparison", fontsize=16, fontweight='bold')
     plt.tight_layout()
@@ -170,15 +168,15 @@ def visualize_sigma_comparison(study, subject_id, sigmas=[1, 5, 10, 20, 50], fig
     fig, axes = plt.subplots(num_sigmas, 1, figsize=figsize, sharex=True)
     if num_sigmas == 1:
         axes = [axes]
-    for i, emotion in enumerate(subject["Emotion"].unique()):
-        subject_emotion = subject[subject["Emotion"] == emotion].copy()
-        subject_emotion['time_offset'] = subject_emotion['timestamp'] - \
-                                         subject_emotion['timestamp'].iloc[0]
+    for i, emotion in enumerate(subject["EMOTION"].unique()):
+        subject_emotion = subject[subject["EMOTION"] == emotion].copy()
+        subject_emotion['time_offset'] = subject_emotion['TIMESTAMP'] - \
+                                         subject_emotion['TIMESTAMP'].iloc[0]
         subject_emotion = subject_emotion.loc[(subject_emotion["time_offset"] < time_end) & (
                 subject_emotion["time_offset"] > time_start)].copy()
 
         for j, sigma in enumerate(sigmas):
-            smooth = ECG_SmoothTransformer(sigma=sigma)
+            smooth = ECGSmoothTransformer(sigma=sigma)
             X_smoothed = pd.DataFrame(smooth.fit_transform(
                 subject_emotion[["ECG", "EDA", "SBP", "DBP"]]), columns=['ECG', 'EDA', 'SBP', 'DBP'])
             t = subject_emotion["time_offset"].astype(np.float32).to_numpy()
@@ -219,55 +217,56 @@ def apply_ema(df: pd.DataFrame, feature: str, span: int = 20) -> pd.DataFrame:
     return df
 
 
-def clean_DBP(subject_data: pd.DataFrame) -> None:
-    emotions = subject_data["Emotion"].unique()
-    colors = sns.color_palette("husl", subject_data["Emotion"].nunique())
+def clean_DBP(subject_data: pd.DataFrame):
+    emotions = subject_data["EMOTION"].unique()
+    colors = sns.color_palette("husl", subject_data["EMOTION"].nunique())
     color_dict = {emotion: colors[i] for i, emotion in enumerate(emotions)}
-    subject_id = subject_data["Subject_ID"].unique()[0]
+    subject_id = subject_data["SUBJECT_ID"].unique()[0]
     fig, axs = plt.subplots(1, 2, figsize=(15, 10), sharey=True)
-    for subject_id in subject_data["Subject_ID"].unique():
-        subject_data = subject_data[subject_data["Subject_ID"] == subject_id]
-        for i, emotion in enumerate(subject_data["Emotion"].unique()):
-            emotion_data = subject_data[subject_data["Emotion"] == emotion]
-            emotion_data['time_offset'] = emotion_data['timestamp'] - \
-                                          emotion_data['timestamp'].iloc[0]
-            print(i, emotion, subject_data["File_Name"].unique())
+    for subject_id in subject_data["SUBJECT_ID"].unique():
+        subject_data = subject_data[subject_data["SUBJECT_ID"] == subject_id]
+        for i, emotion in enumerate(subject_data["EMOTION"].unique()):
+            emotion_data = subject_data[subject_data["EMOTION"] == emotion]
+            emotion_data['time_offset'] = emotion_data['TIMESTAMP'] - \
+                                          emotion_data['TIMESTAMP'].iloc[0]
+            print(i, emotion, subject_data["FILE_NAME"].unique())
             POPANEFigureGenerator.plot_signals(emotion_data.time_offset, emotion_data.DBP,
                                                color=color_dict[emotion], label=emotion, axis=axs[0])
-            median_cleaned = emotion_data.groupby("File_Name", group_keys=False).apply(
+            median_cleaned = emotion_data.groupby("FILE_NAME", group_keys=False).apply(
                 lambda x: apply_rollingmedian(x, 'DBP')).fillna(method="bfill").fillna(method="ffill")
             POPANEFigureGenerator.plot_signals(median_cleaned.time_offset, median_cleaned.DBP,
                                                color=color_dict[emotion], label=emotion, axis=axs[1])
     fig.legend(handles=[Line2D([0], [0], color=color_dict[emotion], lw=2, label=emotion) for emotion in
-                        subject_data["Emotion"].unique()],
+                        subject_data["EMOTION"].unique()],
                bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
     axs[0].set_title(f"Subject {subject_id} - Raw DBP Signals")
     axs[1].set_title(f"Subject {subject_id} - Median Filtered DBP Signals")
     axs[1].set_xlabel("Time Offset (s)")
     plt.tight_layout()
     plt.show()
+    return median_cleaned
 
 
 def plot_transformations(df, time, signal, title, color, axis, label=None):
-    emotions = df["Emotion"].unique()
-    colors = sns.color_palette("husl", df["Emotion"].nunique())
+    emotions = df["EMOTION"].unique()
+    colors = sns.color_palette("husl", df["EMOTION"].nunique())
     color_dict = {emotion: colors[i] for i, emotion in enumerate(emotions)}
-    for subject_id in df["Subject_ID"].unique():
-        subject_data = df[df["Subject_ID"] == subject_id]
-        subject_data['time_offset'] = subject_data['timestamp'] - \
-                                      subject_data['timestamp'].iloc[0]
+    for subject_id in df["SUBJECT_ID"].unique():
+        subject_data = df[df["SUBJECT_ID"] == subject_id]
+        subject_data['time_offset'] = subject_data['TIMESTAMP'] - \
+                                      subject_data['TIMESTAMP'].iloc[0]
         fig, axs = plt.subplots(1, 2, figsize=(15, 10), sharey=True)
-        for i, emotion in enumerate(subject_data["Emotion"].unique()):
-            emotion_data = subject_data[subject_data["Emotion"] == emotion]
+        for i, emotion in enumerate(subject_data["EMOTION"].unique()):
+            emotion_data = subject_data[subject_data["EMOTION"] == emotion]
             emotion_data = emotion_data[emotion_data["time_offset"] <= 10]
             POPANEFigureGenerator.plot_signals(emotion_data.time_offset, emotion_data.ECG,
                                                color=color_dict[emotion], label=emotion, axis=axs[0])
-            median_cleaned = emotion_data.groupby("File_Name", group_keys=False).apply(
+            median_cleaned = emotion_data.groupby("FILE_NAME", group_keys=False).apply(
                 lambda x: apply_rollingmedian(x, 'ECG')).fillna(method="bfill").fillna(method="ffill")
             POPANEFigureGenerator.plot_signals(median_cleaned.time_offset, median_cleaned.ECG,
                                                color=color_dict[emotion], label=emotion, axis=axs[1])
         fig.legend(handles=[Line2D([0], [0], color=color_dict[emotion], lw=2, label=emotion) for emotion in
-                            subject_data["Emotion"].unique()],
+                            subject_data["EMOTION"].unique()],
                    bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
         axs[0].set_title(f"Subject {subject_id} - Raw ECG Signals")
         axs[1].set_title(f"Subject {subject_id} - Median Filtered ECG Signals")

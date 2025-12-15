@@ -1,0 +1,12 @@
+pandas
+polars
+numpy
+scipy
+matplotlib
+seaborn
+scikit-learn
+
+[dev]
+pytest
+black
+flake8

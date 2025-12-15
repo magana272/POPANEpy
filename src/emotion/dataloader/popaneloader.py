@@ -5,7 +5,7 @@ for multiple emotion studies.
 
 """
 from __future__ import annotations
-import dataclasses
+
 import os
 import re
 import threading
@@ -22,13 +22,7 @@ from typing import cast
 import pandas as pd
 import polars as pl
 import requests
-
-
 from polars import DataFrame
-from typing import TYPE_CHECKING
-
-
-from emotion.studies.subject import Subject, POPANEMetadata
 
 
 class POPANEMETADataLoader:
@@ -71,7 +65,8 @@ class POPANEMETADataLoader:
                       "study6": ["ID", "sex", "age", "height", "weight", "stimuli1", "stimuli2", "stimuli3", "stimuli4",
                                  "stimuli5", "stimuli6"],
                       "study7": ["ID", "age", "sex", "height", "weight", "stimuli1", "stimuli2", "stimuli3", "stimuli4",
-                                 "stimuli5"]}
+                                 "stimuli5"],
+                      "list of stimuli": None}
         studies_meta = {}
         for sheet, cols in sheet_info.items():
             if sheet == "study5":
@@ -80,7 +75,7 @@ class POPANEMETADataLoader:
             elif sheet in ["study6", "study7"]:
                 df = pd.read_excel(self.metadata_path, sheet_name=cast(
                     str, sheet), skiprows=6, usecols=cols)
-            elif sheet == 'list of stimuli':
+            elif sheet == "list of stimuli":
                 df = pd.read_excel(self.metadata_path,
                                    sheet_name=sheet, skiprows=1, nrows=33)
             elif sheet in ['study2', 'study3']:
@@ -116,20 +111,20 @@ class POPANEMETADataLoader:
         """Set stimuli metadata."""
         self.stimuli = stimuli
 
-    def get_study_metadata(self, study_number: int, emotions: list[str] | None = None) -> POPANEMetadata | None:
+    def get_study_metadata(self, study_number: int, emotions: list[str] | None = None) -> pd.DataFrame | None:
         """Get metadata for a specific study."""
         metadata_df = self.studies.get(study_number)
         if metadata_df is None:
             return None
         if emotions is not None:
-            metadata_df = metadata_df[metadata_df['EMOTION'].isin(emotions)] # type: ignore
-        return self.create_popane_metadata(metadata_df)
+            metadata_df = metadata_df[metadata_df['EMOTION'].isin(emotions)]  # type: ignore
+        return metadata_df
 
-    def set_study_metadata(self, study_number: int, df: DataFrame) -> None:
+    def set_study_metadata(self, study_number: int, df: DataFrame) -> pd.DataFrame | None:
         """Set metadata for a specific study."""
         self.studies[study_number] = df
 
-    def get_all_studies_metadata(self) -> dict[int, POPANEMetadata | None]:
+    def get_all_studies_metadata(self) -> dict[int, pd.DataFrame | None]:
         """Get metadata for all studies."""
         return {study_number: self.get_study_metadata(study_number) for study_number in range(1, 8)}
 
@@ -140,50 +135,24 @@ class POPANEMETADataLoader:
     def __clean_metadata_df(self, studies_meta: dict[str, pd.DataFrame]) -> None:
         stimuli = studies_meta.get('list of stimuli')
         if stimuli is not None:
-            stimuli.rename(
-                columns={'STIMULI ID': 'STIMULI'}, inplace=True)
+            print(stimuli.columns[0])
+            stimuli = stimuli.rename(columns={stimuli.columns[0]: 'STIMULI'}, errors='raise')
             stimuli.columns = stimuli.columns.str.upper()
+
             self.set_stimuli(stimuli)
+        else:
+            raise Exception("No stimuli found")
         for key, val in studies_meta.items():
             val.columns = val.columns.str.upper()
-            self.set_study_metadata(int(key), val)  # type: ignore
+            val.rename(columns={"ID": "SUBJECT_ID"}, inplace=True)
+            self.set_study_metadata(key, val)  # type: ignore
 
-    def get_subject_metadata(self, study_number, subject_id) -> POPANEMetadata | None:
+    def get_subject_metadata(self, study_number, subject_id) -> pd.DataFrame | None:
         study_frame = self.studies.get(study_number)
         if study_frame is None:
             return None
         study_frame = study_frame[study_frame['SUBJECT_ID'] == subject_id]
-        return self.create_popane_metadata(study_frame)
-
-    @staticmethod
-    def create_popane_metadata(study_frame: DataFrame) -> POPANEMetadata | None:
-        return POPANEMetadata(STUDY_NAME=study_frame["STUDY_NAME"].to_list(),
-                              SUBJECT_ID=study_frame["SUBJECT_ID"].to_list(),
-                              AGE=study_frame['AGE'].to_list(),
-                              SEX=study_frame['SEX'].to_list(),
-                              HEIGHT=study_frame['HEIGHT'].to_list(),
-                              WEIGHT=study_frame['WEIGHT'].to_list(),
-                              EMOTION=study_frame['EMOTION'].to_list(),
-                              STIMULI=study_frame['STIMULI'].to_list(
-        ) if "STIMULI" in study_frame.columns else None,
-            STIMULI1=study_frame['STIMULI1'].to_list(
-        ) if 'STIMULI1' in study_frame.columns else None,
-            STIMULI2=study_frame['STIMULI2'].to_list(
-        ) if 'STIMULI2' in study_frame.columns else None,
-            STIMULI3=study_frame['STIMULI3'].to_list(
-        ) if 'STIMULI3' in study_frame.columns else None,
-            STIMULI4=study_frame['STIMULI4'].to_list(
-        ) if 'STIMULI4' in study_frame.columns else None,
-            STIMULI5=study_frame['STIMULI5'].to_list(
-        ) if 'STIMULI5' in study_frame.columns else None,
-            STIMULI6=study_frame['STIMULI6'].to_list(
-        ) if 'STIMULI6' in study_frame.columns else None,
-            STIMULI7=study_frame['STIMULI7'].to_list(
-        ) if 'STIMULI7' in study_frame.columns else None,
-            FILE_PATH=study_frame[
-                                  'FILE_PATH'].to_list() if 'FILE_PATH' in study_frame.columns else None,
-            FILE_NAME=study_frame[
-                                  'FILE_NAME'].to_list() if 'FILE_NAME' in study_frame.columns else None)
+        return study_frame
 
 
 class POPANEDataLoader:
@@ -192,7 +161,7 @@ class POPANEDataLoader:
     """
 
     data_dir: str
-    studies_meta_loader: POPANEMETADataLoader = POPANEMETADataLoader()
+    studies_meta_loader: POPANEMETADataLoader
 
     __tempdir: Traversable = files('emotion') / 'tmp'
     lock = threading.Lock()
@@ -216,20 +185,15 @@ class POPANEDataLoader:
             filez = []
             for d in listdir(self.data_dir):
                 if os.path.isdir(f"{self.data_dir}{d}"):
-                    print(f"Scanning directory: {self.data_dir}{d}")
                     filez += [f"{self.data_dir}{d}/{f}" for
                               f in listdir(f"{self.data_dir}{d}")
                               if isfile(join(f"{self.data_dir}{d}", f))]
             return filez
 
         def __join_metadata_file_with_header_information(df) -> None:
-            print("Merging metadata with file header information...")
-            print(df.head())
-            meta_columns = header_info_df.columns.tolist()
+            meta_columns = df.columns.tolist()
             for study_number in range(1, 8):
-                study = self.studies_meta_loader.get_study_metadata(
-                    study_number)
-                study = pd.DataFrame(dataclasses.asdict(study))  # type: ignore
+                study = self.studies_meta_loader.get_study_metadata(study_number)
                 if study is None:
                     raise Exception(
                         f"Metadata for study {study_number} is None.")
@@ -247,10 +211,10 @@ class POPANEDataLoader:
             if df is None:
                 raise Exception("Metadata dataframe is None or empty.")
             df.loc[(df.STUDY_NAME == "STUDY 6") & (df.SUBJECT_SEX == "1"),
-                   "SUBJECT_SEX"] = 0
+            "SUBJECT_SEX"] = 0
             df.loc[(df.STUDY_NAME == "STUDY 6") &
                    (df.SUBJECT_SEX == "2"),
-                   "SUBJECT_SEX"] = 1
+            "SUBJECT_SEX"] = 1
             df["EMOTION"] = df["FILE_NAME"].str.extract(
                 r'_([a-zA-Z_]*)[0-9]*?$')[0]
             df["STUDY_NAME"] = df["STUDY_NAME"].str.upper().str.replace(" ", "")
@@ -435,18 +399,18 @@ class POPANEDataLoader:
         for thread in threads:
             thread.join()
 
-    def get_study_metadata(self, study_number: int) -> POPANEMetadata | None:
+    def get_study_metadata(self, study_number: int) -> pd.DataFrame | None:
         """Retrieve metadata for a specific study based on the study number."""
         return self.studies_meta_loader.get_study_metadata(study_number)
 
-    def get_data_for_subject_from_study(self, study_number: int, subject_id: int) -> Subject | None:
+    def get_data_for_subject_from_study(self, study_number: int, subject_id: int) -> pd.DataFrame | None:
         """Get data for a specific subject from a specific study."""
-        study_meta = self.studies_meta_loader.get_subject_metadata(
-            study_number, subject_id)
-        df = self.get_subject_df(study_number, subject_id)
+        study_meta = self.studies_meta_loader.get_subject_metadata(study_number, subject_id)
         if study_meta is None:
             return None
-        return Subject(study_meta)
+        df = self.get_subject_data(study_number, subject_id)
+
+        return df
 
     def get_subject_ids(self, study_number, emotion: list[str] | None = None) -> list[int]:
         """Get a list of subject IDs for a specific study."""
@@ -468,9 +432,9 @@ class POPANEDataLoader:
         return unique_emotions
 
     def get_all_subjects_from_study(self, study_number: int, emotions: list[str] | None = None) -> dict[
-            int, Subject | None]:
+        int, pd.DataFrame | None]:
         studymeta = self.studies_meta_loader.get_study_metadata(study_number, emotions)
-        res: dict[int, Subject | None] = {}
+        res: dict[int, pd.DataFrame | None] = {}
         if studymeta is None:
             return res
         if studymeta.SUBJECT_ID is not None:
@@ -483,25 +447,27 @@ class POPANEDataLoader:
                 study_number, subject_id)
         return res
 
-    def get_subject_metadata(self, study_number: int, subject_id: int) -> POPANEMetadata | None:
+    def get_subject_metadata(self, study_number: int, subject_id: int) -> pd.DataFrame | None:
         """Get metadata for a specific subject in a specific study."""
         study_meta = self.studies_meta_loader.get_subject_metadata(
             study_number, subject_id)
         return study_meta
 
-    def get_subject_df(self, study_id, subject_id) -> pl.DataFrame | None:
+    def get_subject_data(self, study_id, subject_id) -> pl.DataFrame | None:
         """Get metadata DataFrame for a specific subject in a study."""
         metadata = self.get_subject_metadata(study_id, subject_id)
         dfs = []
         if metadata is None or metadata.FILE_PATH is None:
             return None
-        for study_name, file_path, emotion, file_name, subject_id in list(zip(metadata.STUDY_NAME, metadata.FILE_PATH,  # pyright: ignore[reportGeneralTypeIssues]
-                                                                              metadata.EMOTION, metadata.FILE_NAME,  # type: ignore
-                                                                              metadata.SUBJECT_ID)):  # type: ignore
+        for study_name, file_path, emotion, file_name, subject_id in list(
+                zip(metadata.STUDY_NAME, metadata.FILE_PATH,  # pyright: ignore[reportGeneralTypeIssues]
+                    metadata.EMOTION, metadata.FILE_NAME,  # type: ignore
+                    metadata.SUBJECT_ID)):  # type: ignore
             data = pl.read_csv(file_path, skip_rows=9,
                                infer_schema_length=10000)
+
             numeric_columns = [col for col in data.columns
-                               if col not in ['MARKER', 'STUDY_NAME', 'SUBJECT_ID',
+                               if col not in ['marker', 'Study_name', 'Subject_ID',
                                               'EMOTION', 'FILE_NAME', 'FILE_PATH']]
             cast_exprs = [pl.col(col).cast(pl.Float64, strict=False)
                           for col in numeric_columns]
@@ -517,6 +483,9 @@ class POPANEDataLoader:
         if len(dfs) == 0:
             return pl.DataFrame()
         return pl.concat(dfs)
+
+    def get_stimui(self) -> pd.DataFrame:
+        return self.studies_meta_loader.get_stimuli()
 
 
 def main():

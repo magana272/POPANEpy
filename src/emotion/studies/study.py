@@ -1,30 +1,24 @@
 """
 POPANE emotion study implementations
 """
-from dataclasses import dataclass
-from typing import ClassVar
+from __future__ import annotations
+
+from typing import ClassVar, List
+
 import pandas as pd
-from emotion.studies.dataloader.popaneloader import POPANEDataLoader
-from emotion.studies.subject import Subject, POPANEMetadata
 
-
-@dataclass
-class StudyConfig:
-    """Configuration for a POPANE study"""
-    number: int
-    name: str
-    measurements: tuple[str, ...]
-    dtypes: dict[str, str] | None
-
-    @property
-    def columns(self) -> set[str]:
-        return set(self.measurements)
+from emotion.dataloader.popaneloader import POPANEDataLoader
+from emotion.dataloader.subjectloader import SubjectLoader
+from emotion.studies.metadata import POPANEMetadata
+from emotion.studies.study_config import StudyConfig
+from emotion.studies.subject import Subject
 
 
 class Study:
     """Represents a POPANE emotion study with multiple subjects"""
-
     config: ClassVar[StudyConfig]
+    subjects: ClassVar[List[Subject]]
+    subject_loader = SubjectLoader
 
     def __init__(self, data_loader: 'POPANEDataLoader'):
         self.loader = data_loader
@@ -32,13 +26,16 @@ class Study:
 
     def get_subject(self, subject_id: int, emotion: str | None = None) -> Subject | None:
         if subject_id not in self._subjects:
-            df = self.loader.get_subject_df(self.config.number, subject_id)
+            df = self.loader.get_subject_data(self.config.number, subject_id)
             subject_meta = self.loader.get_subject_metadata(
                 self.config.number, subject_id)
             if subject_meta is None:
                 raise ValueError(
                     f"Study metadata for Study {self.config.number} not found.")
-            return Subject(subject_meta)
+            subject = self.subject_loader.get_subject(subject_meta, subject_id)
+            self._subjects[subject_id] = subject
+            return subject
+        return self._subjects[subject_id]
 
     def get_subject_ids(self) -> list[int]:
         return self.loader.get_subject_ids(self.config.number)
@@ -52,14 +49,24 @@ class Study:
     def get_measurements(self) -> dict[str, str] | None:
         return self.config.dtypes
 
-    def get_all_subjects(self, study_numbers: list[int]) -> dict[int, Subject | None]:
+    def get_all_subjects(self, study_numbers: list[int], emotions: list[str]) -> dict[int, Subject | None]:
         return self.loader.get_all_subjects_from_study(self.config.number, self.get_unique_emotions())
-    def get_all_subjects_from_study(self, study_number: int, emotions: list[str]) -> dict[int, Subject | None]:
-        return self.loader.get_all_subjects_from_study(study_number, emotions)
+
+    def get_all_subjects_from_study(self, emotions: list[str]) -> dict[int, Subject | None]:
+        return self.loader.get_all_subjects_from_study(self.config.number, emotions)
+
+    def get_from_study_by_emotion(self, emotions: list[str]) -> dict[int, Subject | None]:
+        return self.loader.get_all_subjects_from_study(self.config.number, emotions)
+
+    def get_stimuli(self) -> pd.DataFrame:
+        return self.loader.get_stimui()
 
     @property
     def available_measurements(self) -> tuple[str, ...]:
         return self.config.measurements
+
+    def study_description(self):
+        return self.config.description
 
     def __repr__(self):
         return f"Study(number={self.config.number}, name={self.config.name})"
@@ -82,7 +89,9 @@ class Study1(Study):
             "EDA": "float", "temp": "float", "respiration": "float",
             "SBP": "float", "DBP": "float", "marker": "int"
         }
+        # TODO: Add description
     )
+    SubjectLoader(config)
 
 
 class Study2(Study):
@@ -96,6 +105,7 @@ class Study2(Study):
             "EDA": "float", "SBP": "float", "DBP": "float",
             "CO": "float", "TPR": "float", "marker": "int"
         }
+        # TODO: Add description
     )
 
 
@@ -110,6 +120,7 @@ class Study3(Study):
             "EDA": "float", "SBP": "float", "DBP": "float",
             "CO": "float", "TPR": "float", "marker": "int"
         }
+        # TODO: Add description
     )
 
 
@@ -123,7 +134,9 @@ class Study4(Study):
             "timestamp": "float", "ECG": "float", "EDA": "float",
             "SBP": "float", "DBP": "float", "CO": "float",
             "TPR": "float", "marker": "int"
-        }
+        },
+        # TODO: Add description
+        description="None"
     )
 
 
@@ -137,7 +150,8 @@ class Study5(Study):
             "timestamp": "float", "affect": "float", "ECG": "float",
             "EDA": "float", "SBP": "float", "DBP": "float",
             "CO": "float", "TPR": "float", "marker": "int"
-        }
+        },
+        # TODO: Add description
     )
 
 
@@ -153,6 +167,7 @@ class Study6(Study):
             "SBP": "float", "DBP": "float", "CO": "float",
             "TPR": "float", "marker": "int"
         }
+        # TODO: Add description
     )
 
 
