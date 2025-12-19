@@ -16,6 +16,9 @@ dependencies = [
     "matplotlib",
     "seaborn",
     "scikit-learn",
+    "duckdb",
+    "requests",
+    "alive_it"
 ]
 
 [project.optional-dependencies]

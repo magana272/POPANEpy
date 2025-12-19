@@ -22,6 +22,8 @@ from typing import cast
 import pandas as pd
 import polars as pl
 import requests
+import joblib
+from alive_progress import alive_it
 from polars import DataFrame
 
 
@@ -295,40 +297,80 @@ class POPANEDataLoader:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(self.data_dir)
 
-    def download_data(self, directory: str = "./data/raw/") -> None:
+    def download_data(self, directory: str = "./data/raw/", studies = (1,2,3,4,5,6,7,"meta")) -> None:
         """Download data from OSF storage."""
-        data = ["https://data.psychosensing.psnc.pl/popane/files/study1.zip",
-                "https://data.psychosensing.psnc.pl/popane/files/study2.zip",
-                "https://data.psychosensing.psnc.pl/popane/files/study3.zip",
-                "https://data.psychosensing.psnc.pl/popane/files/study4.zip",
-                "https://data.psychosensing.psnc.pl/popane/files/study5.zip",
-                "https://data.psychosensing.psnc.pl/popane/files/study6.zip",
-                "https://data.psychosensing.psnc.pl/popane/files/study7.zip",
-                "https://data.psychosensing.psnc.pl/popane/files/metadata.xlsx"]
+        if isinstance(studies, int) or isinstance(studies, str):
+            studies = [studies]
+        DATA_INFO = {1:
+                        {"uri":"\thttps://data.psychosensing.psnc.pl/popane/files/study1.zip",
+                         "info": "|study1.zip	|1.7 GB	        |9.1 GB          |",
+                         "zipGB": 1.7,
+                         "unzippedGB": 9.1},
+                2:
+                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study2.zip",
+                         "info":"|study2.zip	|1.6 GB	        |14.5 GB         |",
+                         "zipGB": 1.6,
+                         "unzippedGB": 14.5
+                         },
+                3:
+                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study3.zip",
+                         "info": "|study3.zip	|2.6 GB	        |24.6 GB         |",
+                         "zipGB": 2.6,
+                         "unzippedGB": 24.6
+                         },
+                4:
+                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study4.zip",
+                         "info": "|study4.zip	|0.6 GB	        |6.9 GB          |",
+                         "zipGB": 0.6,
+                         "unzippedGB": 9.1
+                         },
+                5:
+                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study5.zip",
+                         "info": "|study5.zip	|1.5 GB	        |18.5 GB         |",
+                         "zipGB": 1.5,
+                         "unzippedGB": 18.5
+                         },
+                6:
+                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study6.zip",
+                         "info": "|study6.zip	|2.7 GB	        |31.7 GB         |",
+                         "zipGB": 2.7,
+                         "unzippedGB": 31.7
+                         },
+                7:
+                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study7.zip",
+                         "info": "|study7.zip	|7.0 GB	        |50.4 GB         |",
+                         "zipGB": 7.0,
+                         "unzippedGB": 50.4
+                         },
+                "meta": {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/metadata.xlsx",
+                         "info": "meta.xlsx 	|0 GB	        |<1 GB         |",
+                         "zipGB": 0,
+                         "unzippedGB": .2
+                         }
+                     }
+        data = []
+        for study_number in studies:
+            data.append(DATA_INFO[study_number]["uri"])
+
         print(f"Current working directory: {os.getcwd()}")
 
         os.makedirs(directory, exist_ok=True)
-        data_size_string = """
-        ----------------------------------------------
-        |File	    |Size of .zip	|Size unzipped   |
-        |---------------------------------------------
-        |study1.zip	|1.7 GB	        |9.1 GB          |
-        |study2.zip	|1.6 GB	        |14.5 GB         |
-        |study3.zip	|2.6 GB	        |24.6 GB         |
-        |study4.zip	|0.6 GB	        |6.9 GB          |
-        |study5.zip	|1.5 GB	        |18.5 GB         |
-        |study6.zip	|2.7 GB	        |31.7 GB         |
-        |study7.zip	|7.0 GB	        |50.4 GB         |
-        ----------------------------------------------
-        Total size (unzipped): 155.7 GB
-        """
+        header = ("----------------------------------------------\n"
+                  "|File	    |Size of .zip	|Size unzipped   |\n"
+                  "|---------------------------------------------\n")
+        size =  0
+        for s in studies:
+            size  += DATA_INFO[s]["unzippedGB"]
+        footer = "----------------------------------------------\n"+ f"Total size (unzipped): {size} GB\n"
         print("The following files will be downloaded:")
-        print(data_size_string)
+        print(header)
+        for study_number in studies:
+            print(DATA_INFO[study_number]["info"])
+        print(footer)
         answer = input("Are you sure you want to download? (y/n): ")
         if answer.lower() != 'y':
             print("Download cancelled.")
             return
-        import joblib
         joblib.parallel.DEFAULT_BACKEND = 'threading'
         threading_list = []
         with joblib.parallel_config('threading', n_jobs=20):
@@ -337,9 +379,7 @@ class POPANEDataLoader:
                 filepath = os.path.join(directory, filename)
                 print(f"Downloading {filename}...")
                 threading_list.append(threading.Thread(target=self.threaded_download,
-                                                       args=(filename, url, filepath), daemon=True))
-            threading_list.append(threading.Thread(
-                target=self.check_all_downloads, args=(directory,), daemon=True))
+                                                       args=(filename, url, filepath)))
             for thread in threading_list:
                 thread.start()
             for thread in threading_list:
@@ -373,31 +413,14 @@ class POPANEDataLoader:
             self.__update_number_of_downloads(filename, filepath)
             return
         response = requests.get(url, stream=True)
+        total = int(response.headers.get("Content-Length", 0))
         with open(filepath, 'wb') as file:
-            for chunk in response.iter_content(chunk_size=8192):
+            for chunk in alive_it(response.iter_content(chunk_size=8192),
+                                  total = int(total/8192)+1,
+                                  finalize= lambda x: print(f"Finished downloading.{ filename}")):
                 if chunk:
                     file.write(chunk)
         self.__update_number_of_downloads(filename, filepath)
-
-    def check_all_downloads(self, directory):
-        print("Checking download progress...")
-        threads = []
-        while not self.download_complete():
-            print("Download progress:")
-            COMPLETE_SIZE = 1.7 + 1.6 + 2.6 + 0.6 + 1.5 + 2.7 + 7.0
-            print(f"Total size to download: {COMPLETE_SIZE} GB")
-            total_downloaded = 0.0
-            for filename in os.walk(directory):
-                for file in filename[2]:
-                    if file.endswith('.zip'):
-                        filepath = os.path.join(filename[0], file)
-                        filesize = os.path.getsize(
-                            filepath) / (1024 * 1024 * 1024)  # Convert to GB
-                        total_downloaded += filesize
-            print(f"Total downloaded so far: {total_downloaded:.2f} GB")
-            print(f"{total_downloaded / COMPLETE_SIZE * 100:.2f}% completed")
-        for thread in threads:
-            thread.join()
 
     def get_study_metadata(self, study_number: int) -> pd.DataFrame | None:
         """Retrieve metadata for a specific study based on the study number."""
