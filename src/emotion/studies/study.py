@@ -8,7 +8,7 @@ from typing import ClassVar, List
 import pandas as pd
 
 from emotion.dataloader.popaneloader import POPANEDataLoader
-from emotion.dataloader.subjectloader import SubjectLoader
+# from emotion.dataloader.subjectloader import SubjectLoader
 from emotion.studies.metadata import POPANEMetadata
 from emotion.studies.study_config import StudyConfig
 from emotion.studies.subject import Subject
@@ -18,7 +18,7 @@ class Study:
     """Represents a POPANE emotion study with multiple subjects"""
     config: ClassVar[StudyConfig]
     subjects: ClassVar[List[Subject]]
-    subject_loader = SubjectLoader
+    # subject_loader : SubjectLoader
 
     def __init__(self, data_loader: 'POPANEDataLoader'):
         self.loader = data_loader
@@ -32,7 +32,7 @@ class Study:
             if subject_meta is None:
                 raise ValueError(
                     f"Study metadata for Study {self.config.number} not found.")
-            subject = self.subject_loader.get_subject(subject_meta, subject_id)
+            subject = Subject(subject_meta, df)
             self._subjects[subject_id] = subject
             return subject
         return self._subjects[subject_id]
@@ -91,7 +91,7 @@ class Study1(Study):
         }
         # TODO: Add description
     )
-    SubjectLoader(config)
+    # SubjectLoader(config)
 
 
 class Study2(Study):

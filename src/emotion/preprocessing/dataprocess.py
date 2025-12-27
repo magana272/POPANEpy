@@ -35,11 +35,11 @@ def window_data(dataset: pd.DataFrame,
     - window_size: The size of each window (number of samples).
     - steps: The step size between consecutive windows.
     Returns:
-    - X: 
+    - X:
         A numpy array of shape (num_windows, window__size, num_features)
         containing the windowed data.
-    - y: 
-        A numpy array of shape (num_windows,) 
+    - y:
+        A numpy array of shape (num_windows,)
         containing the labels for each window.
     """
     df = dataset.copy()
@@ -86,10 +86,10 @@ class ECGSmoothTransformer(BaseEstimator, TransformerMixin):
         return X_out
 
 
-def visualize_transformations(study: int, subject_id: int, figsize: tuple = (15, 8),
+def visualize_transformations(study: int, subject_id: int, data_path: str, figsize: tuple = (15, 8),
                               start_end: tuple = (0, 10), sigma: int = 10):
     """
-    Visualize the effect of different data transformations 
+    Visualize the effect of different data transformations
     on physiological signalsfor a given subject.
         Parameters:
         - study: Study number (1-7)
@@ -99,13 +99,14 @@ def visualize_transformations(study: int, subject_id: int, figsize: tuple = (15,
         - time_end: End time for visualization
         - sigma: Sigma value for Gaussian smoothing
     """
-    popane_data_loader = POPANEDataLoader()
+
+    popane_data_loader = POPANEDataLoader(data_path)
     subject = popane_data_loader.get_data_for_subject_from_study(
         study, subject_id)
+    # subject = subject.t if subject is not None else None
     if subject is None:
         print(f"No data found for Study {study}, Subject_ID: {subject_id}")
         return
-    subject = subject.to_dataframe()
     time_start, time_end = start_end
     scaler = StandardScaler()
     smooth = ECGSmoothTransformer(sigma=sigma)
@@ -122,15 +123,15 @@ def visualize_transformations(study: int, subject_id: int, figsize: tuple = (15,
     transformations["Scaled & Smoothed"] = pd.DataFrame(
         smooth.fit_transform(transformations["Scaled"]), columns=features)
     for key, val in transformations.items():
-        val["Emotion"] = subject["Emotion"]
+        val["EMOTION"] = subject["EMOTION"]
         val["timestamp"] = subject["timestamp"]
         transformations[key] = val
 
     palette = sns.color_palette(
-        "husl", n_colors=len(subject["Emotion"].unique()))
+        "husl", n_colors=len(subject["EMOTION"].unique()))
     fig, axes = plt.subplots(4, 1, figsize=figsize, sharex=True)
-    for i, emotion in enumerate(subject["Emotion"].unique()):
-        emotion_mask = subject["Emotion"] == emotion
+    for i, emotion in enumerate(subject["EMOTION"].unique()):
+        emotion_mask = subject["EMOTION"] == emotion
         base_emotion = subject[emotion_mask].copy()
         for j, (transform_name, transform_data) in enumerate(transformations.items()):
             emotion_data = transform_data[emotion_mask].copy()

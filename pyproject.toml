@@ -18,7 +18,8 @@ dependencies = [
     "scikit-learn",
     "duckdb",
     "requests",
-    "alive_it"
+    "alive_it",
+    pyarrow
 ]
 
 [project.optional-dependencies]

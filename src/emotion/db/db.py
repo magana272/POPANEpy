@@ -51,7 +51,7 @@ class POPANEDB(POPANEDataLoader):
             level=logging.INFO,
             format='%(asctime)s [%(levelname)s] %(message)s',
             handlers=[
-                logging.FileHandler('data/processed/db_creation.log'),
+                logging.FileHandler('data/processed/db_creation.log', mode='w'),
                 logging.StreamHandler()
             ]
         )

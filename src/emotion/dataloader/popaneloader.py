@@ -6,10 +6,13 @@ for multiple emotion studies.
 """
 from __future__ import annotations
 
+import math
 import os
 import re
 import threading
 import zipfile
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from importlib.resources import files
 from io import BufferedWriter
 from os import listdir
@@ -22,8 +25,9 @@ from typing import cast
 import pandas as pd
 import polars as pl
 import requests
-import joblib
-from alive_progress import alive_it
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+from alive_progress import alive_bar
 from polars import DataFrame
 
 
@@ -120,7 +124,7 @@ class POPANEMETADataLoader:
             return None
         if emotions is not None:
             metadata_df = metadata_df[metadata_df['EMOTION'].isin(emotions)]  # type: ignore
-        return metadata_df
+        return metadata_df # pyright: ignore[reportReturnType]
 
     def set_study_metadata(self, study_number: int, df: DataFrame) -> pd.DataFrame | None:
         """Set metadata for a specific study."""
@@ -173,6 +177,12 @@ class POPANEDataLoader:
     completed_files: list[str] = []
 
     def __init__(self, data_dir: str | None = "./data/raw/"):
+        self._session = self._create_session()
+        self._download_lock = threading.Lock()
+        self._ranges_done = defaultdict(int)
+        self._ranges_total = {}
+        self._session = self._create_session()
+
         if data_dir is not None:
             self.data_dir = data_dir
         if self.is_metadata_cached():
@@ -181,6 +191,23 @@ class POPANEDataLoader:
             self.studies_meta_loader = POPANEMETADataLoader()
             self.load_data()
 
+    def _create_session(self) -> requests.Session:
+        """Create a session with connection pooling and retry logic."""
+        session = requests.Session()
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS"]
+        )
+        adapter = HTTPAdapter(
+            pool_connections=20,
+            pool_maxsize=20,
+            max_retries=retry_strategy
+        )
+        session.mount('https://', adapter)
+        session.mount('http://', adapter)
+        return session
     def load_data(self):
 
         def __get_all_file_paths() -> list[str]:
@@ -371,32 +398,120 @@ class POPANEDataLoader:
         if answer.lower() != 'y':
             print("Download cancelled.")
             return
-        joblib.parallel.DEFAULT_BACKEND = 'threading'
-        threading_list = []
-        with joblib.parallel_config('threading', n_jobs=20):
-            for url in data:
-                filename = url.split("/")[-1]
-                filepath = os.path.join(directory, filename)
-                print(f"Downloading {filename}...")
-                threading_list.append(threading.Thread(target=self.threaded_download,
-                                                       args=(filename, url, filepath)))
-            for thread in threading_list:
-                thread.start()
-            for thread in threading_list:
-                thread.join()
-            zip_thread_list = []
-            for file in self.completed_files:
-                if file.endswith('.zip'):
-                    extract_to = os.path.splitext(file)[0]
-                    t = threading.Thread(target=self.unzip_file, args=(
-                        file, extract_to), daemon=True)
-                    zip_thread_list.append(t)
-            for thread in zip_thread_list:
-                thread.start()
-            for thread in zip_thread_list:
-                thread.join()
+        tasks = []
+        for url in data:
+            filename = url.split("/")[-1]
+            filepath = os.path.join(directory, filename)
 
-        return
+            # Check if file is already fully downloaded
+            if os.path.exists(filepath):
+                try:
+                    head = self._session.head(url.strip(), timeout=30)
+                    expected_size = int(head.headers.get("Content-Length", 0))
+                    actual_size = os.path.getsize(filepath)
+                    if actual_size == expected_size and expected_size > 0:
+                        print(f"{filename} already complete ({actual_size} bytes). Skipping.")
+                        continue
+                    else:
+                        print(f"{filename} incomplete ({actual_size}/{expected_size} bytes). Resuming...")
+                        os.remove(filepath)  # Remove incomplete file to restart
+                except Exception as e:
+                    print(f"Could not verify {filename}: {e}. Re-downloading...")
+                    if os.path.exists(filepath):
+                        os.remove(filepath)
+
+            num_threads = min(os.cpu_count() * 3, 32) if os.cpu_count() else 16
+            ranges = self._build_ranges(url.strip(), filepath, num_threads)
+
+            for start, end in ranges:
+                tasks.append((url.strip(), filepath, filename, start, end))
+
+        if len(tasks) == 0:
+            print("No files to download.")
+            return
+
+        print(f"Total range tasks: {len(tasks)}")
+        max_workers = min(os.cpu_count() * 3, 32) if os.cpu_count() else 16
+        with alive_bar(len(tasks), title="Downloading") as bar:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(self._download_range, url, filepath, start, end)
+                    for url, filepath, _, start, end in tasks
+                ]
+
+                for future in as_completed(futures):
+                    try:
+                        filepath, filename = future.result()
+                        bar()
+
+                        # File-level completion tracking (THREAD SAFE)
+                        with self._download_lock:
+                            self._ranges_done[filepath] += 1
+                            if self._ranges_done[filepath] == self._ranges_total[filepath]:
+                                self.__update_number_of_downloads(filename, filepath)
+                    except Exception as e:
+                        print(f"\nDownload error: {e}")
+                        bar()
+
+        print("\nAll downloads complete. Starting extraction...")
+        self.unzip_files()
+
+    def _build_ranges(self, url, filepath, num_threads):
+        head = self._session.head(url, timeout=30)
+        head.raise_for_status()
+
+        if head.headers.get("Accept-Ranges") != "bytes":
+            raise RuntimeError(f"Server does not support range requests: {url}")
+
+        total_size = int(head.headers["Content-Length"])
+
+        # Create sparse file efficiently
+        with open(filepath, "wb") as f:
+            os.ftruncate(f.fileno(), total_size)
+
+        # Store total ranges for completion tracking
+        self._ranges_total[filepath] = num_threads
+
+        chunk_size = math.ceil(total_size / num_threads)
+        ranges = []
+        for i in range(num_threads):
+            start = i * chunk_size
+            end = min(start + chunk_size - 1, total_size - 1)
+            if start <= end:
+                ranges.append((start, end))
+
+        return ranges
+
+
+    def _download_range(self, url, filepath, start, end):
+        """Download a specific byte range of a file with optimized settings."""
+        headers = {"Range": f"bytes={start}-{end}"}
+        filename = os.path.basename(filepath)
+        try:
+            with self._session.get(url, headers=headers, stream=True, timeout=120) as r:
+                r.raise_for_status()
+                with open(filepath, "r+b", buffering=1024*1024) as f:
+                    f.seek(start)
+                    for chunk in r.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            f.write(chunk)
+            return filepath, filename
+        except Exception as e:
+            print(f"\nError downloading range {start}-{end} of {filename}: {e}")
+            raise
+
+    def unzip_files(self):
+        """Unzip files using multiprocessing for better CPU utilization."""
+        zip_files = [(file, os.path.dirname(file)) for file in self.completed_files if file.endswith('.zip')]
+
+        if not zip_files:
+            return
+        print(f"Extracting {len(zip_files)} archive(s)...")
+        for zip_path, extract_to in zip_files:
+            try:
+                self.unzip_file(zip_path, extract_to)
+            except Exception as ex:
+                print(f"Failed to extract {zip_path}: {ex}")
 
     def __update_number_of_downloads(self, filename: str, filepath: str) -> None:
         with self.lock:
@@ -406,21 +521,6 @@ class POPANEDataLoader:
             if filename.endswith('.zip'):
                 self.completed_files.append(filepath)
             print(f"Total downloads completed: {self.__number_of_downloads}")
-
-    def threaded_download(self, filename, url, filepath) -> None:
-        if os.path.exists(filepath):
-            print(f"{filename} already exists. Skipping download.")
-            self.__update_number_of_downloads(filename, filepath)
-            return
-        response = requests.get(url, stream=True)
-        total = int(response.headers.get("Content-Length", 0))
-        with open(filepath, 'wb') as file:
-            for chunk in alive_it(response.iter_content(chunk_size=8192),
-                                  total = int(total/8192)+1,
-                                  finalize= lambda x: print(f"Finished downloading.{ filename}")):
-                if chunk:
-                    file.write(chunk)
-        self.__update_number_of_downloads(filename, filepath)
 
     def get_study_metadata(self, study_number: int) -> pd.DataFrame | None:
         """Retrieve metadata for a specific study based on the study number."""
@@ -432,8 +532,7 @@ class POPANEDataLoader:
         if study_meta is None:
             return None
         df = self.get_subject_data(study_number, subject_id)
-
-        return df
+        return df.to_pandas() if df is not None else None
 
     def get_subject_ids(self, study_number, emotion: list[str] | None = None) -> list[int]:
         """Get a list of subject IDs for a specific study."""

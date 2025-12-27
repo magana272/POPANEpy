@@ -86,11 +86,11 @@ class POPANE:
     def get_subjects_by_emotion(self, study_number: int, emotions: list[str]) -> dict[int, Subject | None]:
         """
         Get all subjects from a study filtered by emotion.
-        
+
         Args:
             study_number: Study number (1-7)
             emotions: List of emotions to filter by
-            
+
         Returns:
             Dictionary mapping subject IDs to Subject instances
         """
@@ -102,10 +102,10 @@ class POPANE:
     def get_features(self, study_number: int) -> set[str]:
         """
         Get physiological measurement features for a specific study.
-        
+
         Args:
             study_number: Study number (1-7)
-            
+
         Returns:
             Set of feature names (e.g., 'ECG', 'EDA', 'TEMP')
         """
@@ -128,10 +128,10 @@ class POPANE:
     def get_common_features(self, study_numbers: list[int]) -> set[str]:
         """
         Get features common to all specified studies.
-        
+
         Args:
             study_numbers: List of study numbers to compare
-            
+
         Returns:
             Set of features present in all specified studies
         """
