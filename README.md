@@ -518,7 +518,7 @@ If you use POPANEpy in your research, please cite:
 ```bibtex
 @software{popanepy2024,
   title={POPANEpy: A Python Package for Emotion Analysis from Physiological Signals},
-  author={Magana272},
+  author={Manuel Magana},
   year={2024},
   url={https://github.com/magana272/POPANEpy}
 }
