@@ -5,6 +5,26 @@ import unittest
 import tempfile
 import os
 from emotion.utils.utils import get_size
+import emotion.utils as utils_module
+
+
+class TestUtilsModuleGetattr(unittest.TestCase):
+    """Test __getattr__ in utils module"""
+
+    def test_getattr_ecg_smooth_transformer(self):
+        """Test __getattr__ returns get_size for ECG_SmoothTransformer"""
+        result = utils_module.__getattr__('ECG_SmoothTransformer')
+        self.assertEqual(result, get_size)
+
+    def test_getattr_version(self):
+        """Test __getattr__ returns __version__"""
+        result = utils_module.__getattr__('__version__')
+        self.assertIsNotNone(result)
+
+    def test_getattr_unknown(self):
+        """Test __getattr__ returns None for unknown attribute"""
+        result = utils_module.__getattr__('unknown_attr')
+        self.assertIsNone(result)
 
 
 class TestGetSize(unittest.TestCase):

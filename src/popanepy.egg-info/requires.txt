@@ -5,6 +5,10 @@ scipy
 matplotlib
 seaborn
 scikit-learn
+duckdb
+requests
+alive-progress
+pyarrow
 
 [dev]
 pytest

@@ -8,17 +8,43 @@ import pandas as pd
 import numpy as np
 
 import emotion.dataloader.popaneloader as popane_data_loader
+import emotion.dataloader as dataloader_module
 from emotion.studies.subject import Subject
 from emotion.preprocessing.dataprocess import ECGSmoothTransformer, window_data
 from emotion.visualization.figure import POPANEFigureGenerator
 from emotion.models.random_forest import EmotionRandomForest
 from emotion import POPANE
+from emotion.dataloader.downloader import POPANEDownloader
+
+
+class TestDataloaderModuleGetattr(unittest.TestCase):
+    """Test __getattr__ in dataloader module"""
+
+    def test_getattr_popane_data_loader(self):
+        """Test __getattr__ returns PopaneDataLoader"""
+        result = dataloader_module.__getattr__('PopaneDataLoader')
+        self.assertEqual(result, popane_data_loader.POPANEDataLoader)
+
+    def test_getattr_popane_downloader(self):
+        """Test __getattr__ returns POPANEDownloader"""
+        result = dataloader_module.__getattr__('POPANEDownloader')
+        self.assertEqual(result, POPANEDownloader)
+
+    def test_getattr_version(self):
+        """Test __getattr__ returns __version__"""
+        result = dataloader_module.__getattr__('__version__')
+        self.assertIsNotNone(result)
+
+    def test_getattr_unknown(self):
+        """Test __getattr__ returns None for unknown attribute"""
+        result = dataloader_module.__getattr__('unknown_attr')
+        self.assertIsNone(result)
 
 
 class TestPOPANEMETADATALoader(unittest.TestCase):
     def setUp(self):
         self.loader = popane_data_loader.POPANEMETADataLoader()
-        
+
     def test_get_study_metadata(self):
         study1_meta = self.loader.get_study_metadata(1)
         study2_meta = self.loader.get_study_metadata(2)
@@ -38,7 +64,7 @@ class TestPOPANEMETADATALoader(unittest.TestCase):
 class test_POPANEDataLoader(unittest.TestCase):
     def setUp(self):
         self.loader = popane_data_loader.POPANEDataLoader(data_dir="data/raw/")
-        
+
     def test_get_study_metadata(self):
         study1_meta = self.loader.get_study_metadata(1)
         study2_meta = self.loader.get_study_metadata(2)
@@ -118,5 +144,93 @@ class test_POPANEDataLoader(unittest.TestCase):
             self.assertIn('DBP', subject_data.columns)
             self.assertIn('marker', subject_data.columns)
         self.assertIsNotNone(subject_data)
+
+
+class TestPOPANEMETADataLoaderAdditional(unittest.TestCase):
+    """Additional tests for POPANEMETADataLoader"""
+
+    def setUp(self):
+        self.loader = popane_data_loader.POPANEMETADataLoader()
+
+    def test_get_stimuli(self):
+        """Test getting stimuli metadata"""
+        stimuli = self.loader.get_stimuli()
+        self.assertIsNotNone(stimuli)
+        if stimuli is not None:
+            self.assertIsInstance(stimuli, pd.DataFrame)
+
+    def test_get_subject_metadata(self):
+        """Test getting subject metadata"""
+        subject_meta = self.loader.get_subject_metadata(1, 1)
+        self.assertIsNotNone(subject_meta)
+        if subject_meta is not None:
+            self.assertIsInstance(subject_meta, pd.DataFrame)
+
+    def test_get_all_studies_metadata(self):
+        """Test getting all studies metadata"""
+        all_meta = self.loader.get_all_studies_metadata()
+        self.assertIsInstance(all_meta, dict)
+        self.assertEqual(len(all_meta), 7)
+
+    def test_is_cached(self):
+        """Test is_cached method"""
+        result = self.loader.is_cached()
+        self.assertIsInstance(result, bool)
+
+    def test_get_study_metadata_with_emotions_filter(self):
+        """Test getting study metadata filtered by emotions"""
+        # First get unfiltered to find available emotions
+        unfiltered = self.loader.get_study_metadata(1)
+        if unfiltered is not None and 'EMOTION' in unfiltered.columns:
+            emotions = unfiltered['EMOTION'].unique().tolist()[:2]
+            if len(emotions) > 0:
+                filtered = self.loader.get_study_metadata(1, emotions=emotions)
+                self.assertIsNotNone(filtered)
+
+
+class TestPOPANEDataLoaderAdditional(unittest.TestCase):
+    """Additional tests for POPANEDataLoader"""
+
+    def setUp(self):
+        self.loader = popane_data_loader.POPANEDataLoader(data_dir="data/raw/")
+
+    def test_downloader_initialized(self):
+        """Test that downloader is properly initialized"""
+        self.assertIsNotNone(self.loader.downloader)
+        from emotion.dataloader.downloader import POPANEDownloader
+        self.assertIsInstance(self.loader.downloader, POPANEDownloader)
+
+    def test_download_complete(self):
+        """Test download_complete method delegates to downloader"""
+        result = self.loader.download_complete()
+        self.assertIsInstance(result, bool)
+
+    def test_number_of_downloads(self):
+        """Test number_of_downloads method delegates to downloader"""
+        result = self.loader.number_of_downloads()
+        self.assertIsInstance(result, int)
+
+    def test_get_subject_ids(self):
+        """Test getting subject IDs for a study"""
+        subject_ids = self.loader.get_subject_ids(1)
+        self.assertIsInstance(subject_ids, list)
+        if len(subject_ids) > 0:
+            self.assertIsInstance(subject_ids[0], (int, np.integer))
+
+    def test_get_unique_emotions(self):
+        """Test getting unique emotions for a study"""
+        emotions = self.loader.get_unique_emotions(1)
+        self.assertIsInstance(emotions, list)
+
+    def test_data_dir_property(self):
+        """Test data_dir property"""
+        self.assertEqual(self.loader.data_dir, "data/raw/")
+
+    def test_is_metadata_cached(self):
+        """Test is_metadata_cached method"""
+        result = self.loader.is_metadata_cached()
+        self.assertIsInstance(result, bool)
+
+
 # if __name__ == '__main__':
 #     unittest.main()

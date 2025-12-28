@@ -14,11 +14,31 @@ from emotion.preprocessing.dataprocess import (
     exponential_moving_average,
     clean_DBP
 )
+import emotion.preprocessing as preprocessing_module
+
+
+class TestPreprocessingModuleGetattr(unittest.TestCase):
+    """Test __getattr__ in preprocessing module"""
+
+    def test_getattr_ecg_smooth_transformer(self):
+        """Test __getattr__ returns ECG_SmoothTransformer"""
+        result = preprocessing_module.__getattr__('ECG_SmoothTransformer')
+        self.assertEqual(result, ECGSmoothTransformer)
+
+    def test_getattr_version(self):
+        """Test __getattr__ returns __version__"""
+        result = preprocessing_module.__getattr__('__version__')
+        self.assertIsNotNone(result)
+
+    def test_getattr_unknown(self):
+        """Test __getattr__ returns None for unknown attribute"""
+        result = preprocessing_module.__getattr__('unknown_attr')
+        self.assertIsNone(result)
 
 
 class TestECGSmoothTransformer(unittest.TestCase):
     """Test ECG smoothing transformer"""
-    
+
     def setUp(self):
         self.transformer = ECGSmoothTransformer(sigma=5)
         self.test_data = pd.DataFrame({
@@ -27,23 +47,23 @@ class TestECGSmoothTransformer(unittest.TestCase):
             'SBP': np.random.randn(1000),
             'DBP': np.random.randn(1000)
         })
-    
+
     def test_fit_returns_self(self):
         """Test that fit returns self for chaining"""
         result = self.transformer.fit(self.test_data)
         self.assertIs(result, self.transformer)
-    
+
     def test_fit_sets_n_features(self):
         """Test that fit sets n_features_in_"""
         self.transformer.fit(self.test_data)
         self.assertEqual(self.transformer.n_features_in_, 4)
-    
+
     def test_transform_preserves_shape(self):
         """Test that transform preserves data shape"""
         self.transformer.fit(self.test_data)
         result = self.transformer.transform(self.test_data)
         self.assertEqual(result.shape, self.test_data.shape)
-    
+
     def test_transform_smooths_ecg(self):
         """Test that ECG signal is smoothed"""
         # Create noisy signal
@@ -53,17 +73,17 @@ class TestECGSmoothTransformer(unittest.TestCase):
             'SBP': np.random.randn(100),
             'DBP': np.random.randn(100)
         })
-        
+
         self.transformer.fit(noisy_ecg)
         smoothed = self.transformer.transform(noisy_ecg)
-        
+
         # Variance should be reduced
         self.assertLess(smoothed['ECG'].var(), noisy_ecg['ECG'].var())
 
 
 class TestWindowData(unittest.TestCase):
     """Test window_data function"""
-    
+
     def setUp(self):
         self.dataset = pd.DataFrame({
             'Subject_ID': [1] * 100,
@@ -76,11 +96,11 @@ class TestWindowData(unittest.TestCase):
             'temp': np.random.randn(100),
             'Emotion': ['joy'] * 100
         })
-    
+
     def test_window_data_shape(self):
         """Test that windowing produces correct shape"""
         X, y = window_data(self.dataset, window__size=10, steps=5)
-    
+
     def test_rolling_mean(self):
         """Test rolling mean smoothing"""
         data = pd.Series([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
@@ -88,14 +108,14 @@ class TestWindowData(unittest.TestCase):
         self.assertEqual(len(result), len(data))
         # Check that it's smoothed
         self.assertIsInstance(result, pd.Series)
-    
+
     def test_exponential_moving_average(self):
         """Test exponential moving average"""
         data = pd.Series([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
         result = exponential_moving_average(data, span=3)
         self.assertEqual(len(result), len(data))
         self.assertIsInstance(result, pd.Series)
-    
+
     @patch('emotion.preprocessing.dataprocess.plt.show')
     @patch('emotion.preprocessing.dataprocess.plt.tight_layout')
     @patch('emotion.preprocessing.dataprocess.plt.subplots')
@@ -107,7 +127,7 @@ class TestWindowData(unittest.TestCase):
         mock_ax1 = MagicMock()
         mock_ax2 = MagicMock()
         mock_subplots.return_value = (mock_fig, [mock_ax1, mock_ax2])
-        
+
         # Create simple dataset
         dataset = pd.DataFrame({
             'TIMESTAMP': pd.date_range('2020-01-01', periods=100, freq='s'),
@@ -116,16 +136,16 @@ class TestWindowData(unittest.TestCase):
             'EMOTION': ['joy'] * 50 + ['anger'] * 50,
             'SUBJECT_ID': [1] * 100
         })
-        
+
         result = clean_DBP(dataset)
-        
+
         self.assertIsInstance(result, pd.DataFrame)
         self.assertGreater(len(result), 0)
         self.assertIn('DBP', result.columns)
-        
+
         mock_subplots.assert_called_once()
         mock_show.assert_called_once()
-    
+
     def test_window_data_labels(self):
         """Test that labels are correctly assigned"""
         X, y = window_data(self.dataset, window__size=10, steps=5)
@@ -134,7 +154,7 @@ class TestWindowData(unittest.TestCase):
 
 class TestDataCleaning(unittest.TestCase):
     """Test data cleaning functions"""
-    
+
     def setUp(self):
         self.data = pd.DataFrame({
             'DBP': np.random.randn(1000) * 10 + 80,
@@ -144,22 +164,152 @@ class TestDataCleaning(unittest.TestCase):
             "FILE_NAME": ['test.csv'] * 1000,
             "TIMESTAMP": np.arange(1000)
             })
-    
+
     def test_rolling_mean(self):
         """Test rolling mean smoothing"""
         smoothed = rolling_mean(self.data['DBP'], window_size=10)
         self.assertEqual(len(smoothed), len(self.data['DBP']))
-    
+
     def test_exponential_moving_average(self):
         """Test exponential moving average"""
         ema = exponential_moving_average(self.data['DBP'], span=10)
         self.assertEqual(len(ema), len(self.data['DBP']))
-    
+
     def test_clean_reduces_noise(self):
         """Test that clean function reduces noise"""
         cleaned = clean_DBP(self.data)
         # DBP should be smoother after cleaning
         self.assertIsNotNone(cleaned['DBP'])
+
+
+class TestCreateAggregatedFeatures(unittest.TestCase):
+    """Test create_aggregated_features function"""
+
+    def setUp(self):
+        """Create test dataset"""
+        import pandas as pd
+        import numpy as np
+
+        # Create a larger dataset to test aggregation
+        n_samples = 500
+        self.dataset = pd.DataFrame({
+            'timestamp': np.linspace(0, 50, n_samples),  # 50 seconds of data
+            'File_Name': ['test_file.csv'] * n_samples,
+            'Subject_ID': [1] * n_samples,
+            'Study_name': ['study1'] * n_samples,
+            'Emotion': ['joy'] * n_samples,
+            'ECG': np.sin(np.linspace(0, 20, n_samples)) + np.random.randn(n_samples) * 0.1,
+            'EDA': np.cos(np.linspace(0, 20, n_samples)) + np.random.randn(n_samples) * 0.05,
+            'SBP': np.random.randn(n_samples) * 5 + 120,
+            'DBP': np.random.randn(n_samples) * 3 + 80,
+        })
+
+    def test_create_aggregated_features_returns_dataframe(self):
+        """Test that create_aggregated_features returns a DataFrame"""
+        from emotion.preprocessing.dataprocess import create_aggregated_features
+
+        result = create_aggregated_features(self.dataset, resample_window='5s')
+
+        self.assertIsInstance(result, pd.DataFrame)
+
+    def test_create_aggregated_features_has_mean_columns(self):
+        """Test that aggregated features include mean columns"""
+        from emotion.preprocessing.dataprocess import create_aggregated_features
+
+        result = create_aggregated_features(self.dataset, resample_window='5s')
+
+        if len(result) > 0:
+            self.assertIn('ECG_mean', result.columns)
+            self.assertIn('EDA_mean', result.columns)
+
+    def test_create_aggregated_features_has_std_columns(self):
+        """Test that aggregated features include std columns"""
+        from emotion.preprocessing.dataprocess import create_aggregated_features
+
+        result = create_aggregated_features(self.dataset, resample_window='5s')
+
+        if len(result) > 0:
+            self.assertIn('ECG_std', result.columns)
+            self.assertIn('EDA_std', result.columns)
+
+    def test_create_aggregated_features_preserves_metadata(self):
+        """Test that metadata columns are preserved"""
+        from emotion.preprocessing.dataprocess import create_aggregated_features
+
+        result = create_aggregated_features(self.dataset, resample_window='5s')
+
+        if len(result) > 0:
+            self.assertIn('File_Name', result.columns)
+            self.assertIn('Subject_ID', result.columns)
+            self.assertIn('Emotion', result.columns)
+
+    def test_create_aggregated_features_empty_dataset(self):
+        """Test with empty dataset"""
+        from emotion.preprocessing.dataprocess import create_aggregated_features
+
+        empty_df = pd.DataFrame(columns=['timestamp', 'File_Name', 'ECG', 'EDA', 'SBP', 'DBP'])
+        result = create_aggregated_features(empty_df)
+
+        self.assertIsInstance(result, pd.DataFrame)
+
+    def test_create_aggregated_features_with_polars(self):
+        """Test that create_aggregated_features works with Polars DataFrame"""
+        from emotion.preprocessing.dataprocess import create_aggregated_features
+        import polars as pl
+
+        polars_df = pl.DataFrame(self.dataset)
+        result = create_aggregated_features(polars_df, resample_window='5s')
+
+        self.assertIsInstance(result, pd.DataFrame)
+
+
+class TestVisualizeFunctions(unittest.TestCase):
+    """Test visualization functions in dataprocess"""
+
+    @patch('emotion.preprocessing.dataprocess.POPANEDataLoader')
+    @patch('emotion.preprocessing.dataprocess.plt.show')
+    @patch('emotion.preprocessing.dataprocess.plt.subplots')
+    def test_visualize_transformations_no_data(self, mock_subplots, mock_show, mock_loader):
+        """Test visualize_transformations when no data is found"""
+        from emotion.preprocessing.dataprocess import visualize_transformations
+
+        mock_loader_instance = mock_loader.return_value
+        mock_loader_instance.get_data_for_subject_from_study.return_value = None
+
+        # Should not raise an exception
+        visualize_transformations(study=1, subject_id=999, data_path='data/raw/')
+
+        mock_loader_instance.get_data_for_subject_from_study.assert_called_once()
+
+    @patch('emotion.preprocessing.dataprocess.POPANEDataLoader')
+    @patch('emotion.preprocessing.dataprocess.plt.show')
+    def test_visualize_sigma_comparison_no_data(self, mock_show, mock_loader):
+        """Test visualize_sigma_comparison when no data is found"""
+        from emotion.preprocessing.dataprocess import visualize_sigma_comparison
+
+        mock_loader_instance = mock_loader.return_value
+        mock_loader_instance.get_data_for_subject_from_study.return_value = None
+
+        # Should not raise an exception
+        visualize_sigma_comparison(study=1, subject_id=999)
+
+
+class TestApplyRollingMedian(unittest.TestCase):
+    """Test apply_rollingmedian function"""
+
+    def test_apply_rollingmedian(self):
+        """Test rolling median is applied"""
+        from emotion.preprocessing.dataprocess import apply_rollingmedian
+
+        df = pd.DataFrame({
+            'ECG': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            'other': [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        })
+
+        result = apply_rollingmedian(df, 'ECG', window_size=3)
+
+        self.assertIsInstance(result, pd.DataFrame)
+        self.assertEqual(len(result), len(df))
 
 
 if __name__ == '__main__':

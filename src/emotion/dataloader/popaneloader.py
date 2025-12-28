@@ -1,34 +1,40 @@
 """
 
-Module to load and handle
+Module to load and handle metadata
 for multiple emotion studies.
 
 """
 from __future__ import annotations
 
-import math
 import os
 import re
-import threading
-import zipfile
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import sys
 from importlib.resources import files
 from io import BufferedWriter
 from os import listdir
 from os.path import isfile
 from os.path import join
 from pickle import load, dump
-from test.test_ensurepip import Traversable
-from typing import cast
+from typing import cast, TYPE_CHECKING
+
+# Handle Traversable import for different Python versions
+try:
+    from importlib.resources.abc import Traversable
+except (ImportError, ModuleNotFoundError):
+    try:
+        from importlib.abc import Traversable
+    except ImportError:
+        # Fallback for typing purposes
+        if TYPE_CHECKING:
+            from typing import Any as Traversable
+        else:
+            Traversable = object
 
 import pandas as pd
 import polars as pl
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
-from alive_progress import alive_bar
 from polars import DataFrame
+
+from emotion.dataloader.downloader import POPANEDownloader
 
 
 class POPANEMETADataLoader:
@@ -162,52 +168,35 @@ class POPANEMETADataLoader:
 
 
 class POPANEDataLoader:
-    """Class to handle metadata
-    for multiple studies.
+    """Class to handle metadata and data loading for multiple studies.
+
+    Uses POPANEDownloader for downloading functionality.
     """
 
     data_dir: str
     studies_meta_loader: POPANEMETADataLoader
+    downloader: POPANEDownloader
 
     __tempdir: Traversable = files('emotion') / 'tmp'
-    lock = threading.Lock()
-    __downloads_completed: bool = False
-    __number_of_downloads: int = 0
-    zip_lock = threading.Lock()
-    completed_files: list[str] = []
 
     def __init__(self, data_dir: str | None = "./data/raw/"):
-        self._session = self._create_session()
-        self._download_lock = threading.Lock()
-        self._ranges_done = defaultdict(int)
-        self._ranges_total = {}
-        self._session = self._create_session()
+        """Initialize the data loader.
 
+        Args:
+            data_dir: Directory containing raw study data.
+        """
         if data_dir is not None:
             self.data_dir = data_dir
+
+        # Initialize the downloader for download operations
+        self.downloader = POPANEDownloader(data_dir=self.data_dir)
+
         if self.is_metadata_cached():
             self.studies_meta_loader = self.read_metadata_from_cache()
         else:
             self.studies_meta_loader = POPANEMETADataLoader()
             self.load_data()
 
-    def _create_session(self) -> requests.Session:
-        """Create a session with connection pooling and retry logic."""
-        session = requests.Session()
-        retry_strategy = Retry(
-            total=3,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=["HEAD", "GET", "OPTIONS"]
-        )
-        adapter = HTTPAdapter(
-            pool_connections=20,
-            pool_maxsize=20,
-            max_retries=retry_strategy
-        )
-        session.mount('https://', adapter)
-        session.mount('http://', adapter)
-        return session
     def load_data(self):
 
         def __get_all_file_paths() -> list[str]:
@@ -264,15 +253,16 @@ class POPANEDataLoader:
                                 FILE_NAME=[],
                                 FILE_PATH=[])
             for filepath in file_list:
-                with open(filepath, newline="\n", encoding="utf-8") as input_file:
+                abs_filepath = os.path.abspath(filepath)
+                with open(abs_filepath, newline="\n", encoding="utf-8") as input_file:
                     head = [input_file.readline()
                             .replace("#", "")
                             .strip("\n")
                             .split(",")
                             for _ in range(4)]
                     head.append(["FILE_NAME",
-                                 re.findall(r"/([a-zA-Z_0-9]*).csv", string=filepath)[0].upper()])
-                    head.append(["FILE_PATH", filepath])
+                                 re.findall(r"/([a-zA-Z_0-9]*).csv", string=abs_filepath)[0].upper()])
+                    head.append(["FILE_PATH", abs_filepath])
                     for _, list_item in enumerate(head):
                         key = list_item[0].upper()
                         vals = [val for val in list_item[1:]]
@@ -311,216 +301,28 @@ class POPANEDataLoader:
 
     def download_complete(self) -> bool:
         """Check if all downloads are complete."""
-        with self.lock:
-            return self.__downloads_completed
+        return self.downloader.download_complete()
 
     def number_of_downloads(self) -> int:
         """Get the number of completed downloads."""
-        with self.lock:
-            return self.__number_of_downloads
+        return self.downloader.number_of_downloads()
 
     def unzip_file(self, zip_path: str, extract_to: str) -> None:
         """Unzip a file to the specified directory."""
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(self.data_dir)
+        self.downloader.unzip_file(zip_path, extract_to)
 
-    def download_data(self, directory: str = "./data/raw/", studies = (1,2,3,4,5,6,7,"meta")) -> None:
-        """Download data from OSF storage."""
-        if isinstance(studies, int) or isinstance(studies, str):
-            studies = [studies]
-        DATA_INFO = {1:
-                        {"uri":"\thttps://data.psychosensing.psnc.pl/popane/files/study1.zip",
-                         "info": "|study1.zip	|1.7 GB	        |9.1 GB          |",
-                         "zipGB": 1.7,
-                         "unzippedGB": 9.1},
-                2:
-                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study2.zip",
-                         "info":"|study2.zip	|1.6 GB	        |14.5 GB         |",
-                         "zipGB": 1.6,
-                         "unzippedGB": 14.5
-                         },
-                3:
-                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study3.zip",
-                         "info": "|study3.zip	|2.6 GB	        |24.6 GB         |",
-                         "zipGB": 2.6,
-                         "unzippedGB": 24.6
-                         },
-                4:
-                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study4.zip",
-                         "info": "|study4.zip	|0.6 GB	        |6.9 GB          |",
-                         "zipGB": 0.6,
-                         "unzippedGB": 9.1
-                         },
-                5:
-                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study5.zip",
-                         "info": "|study5.zip	|1.5 GB	        |18.5 GB         |",
-                         "zipGB": 1.5,
-                         "unzippedGB": 18.5
-                         },
-                6:
-                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study6.zip",
-                         "info": "|study6.zip	|2.7 GB	        |31.7 GB         |",
-                         "zipGB": 2.7,
-                         "unzippedGB": 31.7
-                         },
-                7:
-                        {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/study7.zip",
-                         "info": "|study7.zip	|7.0 GB	        |50.4 GB         |",
-                         "zipGB": 7.0,
-                         "unzippedGB": 50.4
-                         },
-                "meta": {"uri": "\thttps://data.psychosensing.psnc.pl/popane/files/metadata.xlsx",
-                         "info": "meta.xlsx 	|0 GB	        |<1 GB         |",
-                         "zipGB": 0,
-                         "unzippedGB": .2
-                         }
-                     }
-        data = []
-        for study_number in studies:
-            data.append(DATA_INFO[study_number]["uri"])
+    def download_data(self, directory: str = "./data/raw/", studies=(1, 2, 3, 4, 5, 6, 7, "meta")) -> None:
+        """Download data from remote storage.
 
-        print(f"Current working directory: {os.getcwd()}")
-
-        os.makedirs(directory, exist_ok=True)
-        header = ("----------------------------------------------\n"
-                  "|File	    |Size of .zip	|Size unzipped   |\n"
-                  "|---------------------------------------------\n")
-        size =  0
-        for s in studies:
-            size  += DATA_INFO[s]["unzippedGB"]
-        footer = "----------------------------------------------\n"+ f"Total size (unzipped): {size} GB\n"
-        print("The following files will be downloaded:")
-        print(header)
-        for study_number in studies:
-            print(DATA_INFO[study_number]["info"])
-        print(footer)
-        answer = input("Are you sure you want to download? (y/n): ")
-        if answer.lower() != 'y':
-            print("Download cancelled.")
-            return
-        tasks = []
-        for url in data:
-            filename = url.split("/")[-1]
-            filepath = os.path.join(directory, filename)
-
-            # Check if file is already fully downloaded
-            if os.path.exists(filepath):
-                try:
-                    head = self._session.head(url.strip(), timeout=30)
-                    expected_size = int(head.headers.get("Content-Length", 0))
-                    actual_size = os.path.getsize(filepath)
-                    if actual_size == expected_size and expected_size > 0:
-                        print(f"{filename} already complete ({actual_size} bytes). Skipping.")
-                        continue
-                    else:
-                        print(f"{filename} incomplete ({actual_size}/{expected_size} bytes). Resuming...")
-                        os.remove(filepath)  # Remove incomplete file to restart
-                except Exception as e:
-                    print(f"Could not verify {filename}: {e}. Re-downloading...")
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
-
-            num_threads = min(os.cpu_count() * 3, 32) if os.cpu_count() else 16
-            ranges = self._build_ranges(url.strip(), filepath, num_threads)
-
-            for start, end in ranges:
-                tasks.append((url.strip(), filepath, filename, start, end))
-
-        if len(tasks) == 0:
-            print("No files to download.")
-            return
-
-        print(f"Total range tasks: {len(tasks)}")
-        max_workers = min(os.cpu_count() * 3, 32) if os.cpu_count() else 16
-        with alive_bar(len(tasks), title="Downloading") as bar:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = [
-                    executor.submit(self._download_range, url, filepath, start, end)
-                    for url, filepath, _, start, end in tasks
-                ]
-
-                for future in as_completed(futures):
-                    try:
-                        filepath, filename = future.result()
-                        bar()
-
-                        # File-level completion tracking (THREAD SAFE)
-                        with self._download_lock:
-                            self._ranges_done[filepath] += 1
-                            if self._ranges_done[filepath] == self._ranges_total[filepath]:
-                                self.__update_number_of_downloads(filename, filepath)
-                    except Exception as e:
-                        print(f"\nDownload error: {e}")
-                        bar()
-
-        print("\nAll downloads complete. Starting extraction...")
-        self.unzip_files()
-
-    def _build_ranges(self, url, filepath, num_threads):
-        head = self._session.head(url, timeout=30)
-        head.raise_for_status()
-
-        if head.headers.get("Accept-Ranges") != "bytes":
-            raise RuntimeError(f"Server does not support range requests: {url}")
-
-        total_size = int(head.headers["Content-Length"])
-
-        # Create sparse file efficiently
-        with open(filepath, "wb") as f:
-            os.ftruncate(f.fileno(), total_size)
-
-        # Store total ranges for completion tracking
-        self._ranges_total[filepath] = num_threads
-
-        chunk_size = math.ceil(total_size / num_threads)
-        ranges = []
-        for i in range(num_threads):
-            start = i * chunk_size
-            end = min(start + chunk_size - 1, total_size - 1)
-            if start <= end:
-                ranges.append((start, end))
-
-        return ranges
-
-
-    def _download_range(self, url, filepath, start, end):
-        """Download a specific byte range of a file with optimized settings."""
-        headers = {"Range": f"bytes={start}-{end}"}
-        filename = os.path.basename(filepath)
-        try:
-            with self._session.get(url, headers=headers, stream=True, timeout=120) as r:
-                r.raise_for_status()
-                with open(filepath, "r+b", buffering=1024*1024) as f:
-                    f.seek(start)
-                    for chunk in r.iter_content(chunk_size=1024 * 1024):
-                        if chunk:
-                            f.write(chunk)
-            return filepath, filename
-        except Exception as e:
-            print(f"\nError downloading range {start}-{end} of {filename}: {e}")
-            raise
+        Args:
+            directory: Directory to download to.
+            studies: Tuple or list of study numbers to download (1-7 and/or "meta").
+        """
+        self.downloader.download_data(directory=directory, studies=studies)
 
     def unzip_files(self):
-        """Unzip files using multiprocessing for better CPU utilization."""
-        zip_files = [(file, os.path.dirname(file)) for file in self.completed_files if file.endswith('.zip')]
-
-        if not zip_files:
-            return
-        print(f"Extracting {len(zip_files)} archive(s)...")
-        for zip_path, extract_to in zip_files:
-            try:
-                self.unzip_file(zip_path, extract_to)
-            except Exception as ex:
-                print(f"Failed to extract {zip_path}: {ex}")
-
-    def __update_number_of_downloads(self, filename: str, filepath: str) -> None:
-        with self.lock:
-            self.__number_of_downloads += 1
-            if self.__number_of_downloads >= 8:
-                self.__downloads_completed = True
-            if filename.endswith('.zip'):
-                self.completed_files.append(filepath)
-            print(f"Total downloads completed: {self.__number_of_downloads}")
+        """Unzip all completed zip files."""
+        self.downloader.unzip_files()
 
     def get_study_metadata(self, study_number: int) -> pd.DataFrame | None:
         """Retrieve metadata for a specific study based on the study number."""
