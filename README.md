@@ -1,4 +1,4 @@
-# POPANEpy
+# POPANEpy ![Python](https://img.shields.io/badge/python-3.8+-blue.svg) ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 A comprehensive Python package for analyzing physiological signals and emotion classification from the POPANE (Physiological Observation of Person Affect and Negative Emotions) dataset.
 ![Emotion Classification Confusion Matrix](figures/emotions.png)
