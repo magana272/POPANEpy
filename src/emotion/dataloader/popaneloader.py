@@ -607,7 +607,7 @@ class POPANEDataLoader:
         return pl.concat(dfs)
 
     def get_stimui(self) -> pd.DataFrame:
-        return self.studies_meta_loader.get_stimuli()
+        return self.studies_meta_loader.get_stimuli() # type: ignore
 
 
 def main():
