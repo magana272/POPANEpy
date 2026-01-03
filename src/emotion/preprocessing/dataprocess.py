@@ -101,7 +101,7 @@ def visualize_transformations(study: int, subject_id: int, data_path: str, figsi
     """
 
     popane_data_loader = POPANEDataLoader(data_path)
-    subject = popane_data_loader.get_data_for_subject_from_study(
+    subject = popane_data_loader.get_data_for_subject_from_study( # type: ignore
         study, subject_id)
     # subject = subject.t if subject is not None else None
     if subject is None:
@@ -143,6 +143,8 @@ def visualize_transformations(study: int, subject_id: int, data_path: str, figsi
                 POPANEFigureGenerator.plot_signals(emotion_data["time_offset"], emotion_data["ECG"],
                                                    title=transform_name, color=palette[i], axis=axes[j],
                                                    label=f"{emotion}")
+                if j != 0 :
+                    axes[j].get_legend().remove()
             except Exception as e:
                 print(emotion_data.columns)
                 print(emotion_data.head())

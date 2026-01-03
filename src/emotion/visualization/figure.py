@@ -5,7 +5,7 @@ Includes functions to plot physiological signals over time,
 differentiated by emotion.
 Functions:
 - plot_signals: Plot a generic signal over time.
-- create_figure_for_subject: Plot physiological 
+- create_figure_for_subject: Plot physiological
 signals for a given subject,differentiating by emotion
 - create_figure_one_per_study: Create figures for each subject in a study.
 """
@@ -156,7 +156,6 @@ class POPANEFigureGenerator:
             recording_data = subject_data[subject_data.EMOTION == recording].copy(
             )
             emotion = emotion_colors[recording]['emotion']
-            print(emotion, recording)
             color = emotion_colors[recording]['color']
             recording_data['time_offset'] = recording_data['timestamp'] - \
                                             recording_data['timestamp'].iloc[0]
@@ -179,7 +178,7 @@ class POPANEFigureGenerator:
                             title=title,
                             color=color,
                             y_label=y_label,
-                            label=emotion,
+                            label=recording,
                             axis=ax
                         )
                     if iax == 0:
