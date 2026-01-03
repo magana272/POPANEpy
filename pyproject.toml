@@ -19,7 +19,9 @@ dependencies = [
     "duckdb",
     "requests",
     "alive-progress",
-    "pyarrow"
+    "pyarrow",
+    "openpyxl",
+    "tqdm"
 ]
 
 [project.optional-dependencies]

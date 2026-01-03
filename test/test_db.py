@@ -28,21 +28,21 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_initialization(self):
         """Test POPANEDB initializes correctly"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         self.assertIsNotNone(db)
-        self.assertFalse(db._POPANEDB__downloads_completed)
-        self.assertEqual(db._POPANEDB__number_of_downloads, 0)
+        # self.assertFalse(db._POPANEDB__downloads_completed)
+        # self.assertEqual(db._POPANEDB__number_of_downloads, 0)
 
     def test_initialization_with_custom_dir(self):
         """Test POPANEDB initialization with custom data directory"""
-        db = POPANEDB(data_dir=self.test_dir)
+        db = POPANEDB(raw_dir=self.test_dir)
         self.assertIsNotNone(db)
 
     # ==================== Study Column Mapping Tests ====================
 
     def test_study_columns_map_contains_all_studies(self):
         """Test that study_columns_map has entries for all 7 studies"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         for study_num in range(1, 8):
             self.assertIn(study_num, db.study_columns_map)
             columns, dtypes = db.study_columns_map[study_num]
@@ -52,7 +52,7 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_study1_columns(self):
         """Test Study 1 column definitions"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         columns, dtypes = db.study_columns_map[1]
         expected_cols = ("timestamp", "affect", "ECG", "EDA", "temp",
                         "respiration", "SBP", "DBP", "marker")
@@ -61,7 +61,7 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_study2_columns(self):
         """Test Study 2 column definitions"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         columns, dtypes = db.study_columns_map[2]
         expected_cols = ("timestamp", "affect", "ECG", "EDA", "SBP",
                         "DBP", "CO", "TPR", "marker")
@@ -70,7 +70,7 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_study3_columns(self):
         """Test Study 3 column definitions"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         columns, dtypes = db.study_columns_map[3]
         expected_cols = ("timestamp", "affect", "ECG", "EDA", "dzdt", "dz",
                         "z0", "SBP", "DBP", "CO", "TPR", "marker")
@@ -79,7 +79,7 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_study4_columns(self):
         """Test Study 4 column definitions"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         columns, dtypes = db.study_columns_map[4]
         expected_cols = ("timestamp", "ECG", "EDA", "SBP", "DBP", "CO", "TPR", "marker")
         self.assertEqual(columns, expected_cols)
@@ -87,7 +87,7 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_study5_columns(self):
         """Test Study 5 column definitions"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         columns, dtypes = db.study_columns_map[5]
         expected_cols = ("timestamp", "affect", "ECG", "EDA", "SBP",
                         "DBP", "CO", "TPR", "marker")
@@ -96,7 +96,7 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_study6_columns(self):
         """Test Study 6 column definitions"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         columns, dtypes = db.study_columns_map[6]
         expected_cols = ("timestamp", "affect", "ECG", "dzdt", "dz", "z0",
                         "EDA", "SBP", "DBP", "CO", "TPR", "marker")
@@ -105,7 +105,7 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_study7_columns(self):
         """Test Study 7 column definitions"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         columns, dtypes = db.study_columns_map[7]
         expected_cols = ("timestamp", "affect", "ECG", "dzdt", "dz", "z0", "marker")
         self.assertEqual(columns, expected_cols)
@@ -115,7 +115,7 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_columns_and_dtypes_length_match(self):
         """Test that columns and dtypes have matching lengths for all studies"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         for study_num in range(1, 8):
             columns, dtypes = db.study_columns_map[study_num]
             self.assertEqual(len(columns), len(dtypes),
@@ -123,7 +123,7 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_all_dtypes_are_valid(self):
         """Test that all dtypes are valid DuckDB types"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         valid_types = ["DOUBLE", "INTEGER", "VARCHAR", "BOOLEAN", "TIMESTAMP"]
 
         for study_num in range(1, 8):
@@ -164,22 +164,22 @@ class TestPOPANEDB(unittest.TestCase):
 
     def test_default_db_path(self):
         """Test default database path"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         self.assertEqual(db._POPANEDB__duckdbpath, "data/processed/propane_emotion.db")
 
     def test_downloads_completed_initial_state(self):
         """Test downloads_completed starts as False"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         self.assertFalse(db._POPANEDB__downloads_completed)
 
     def test_number_of_downloads_initial_state(self):
         """Test number_of_downloads starts at 0"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         self.assertEqual(db._POPANEDB__number_of_downloads, 0)
 
     def test_threadpool_initial_state(self):
         """Test threadpool starts as None"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         self.assertIsNone(db._POPANEDB__threadpool)
 
 
@@ -190,13 +190,13 @@ class TestPOPANEDBIntegration(unittest.TestCase):
     def test_inherits_from_popane_data_loader(self):
         """Test POPANEDB inherits from POPANEDataLoader"""
         from emotion.dataloader.popaneloader import POPANEDataLoader
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         self.assertIsInstance(db, POPANEDataLoader)
 
     @unittest.skipUnless(os.path.exists("data/raw/"), "Requires data/raw/ directory")
     def test_has_loader_methods(self):
         """Test POPANEDB has data loader methods"""
-        db = POPANEDB(data_dir="data/raw/")
+        db = POPANEDB(raw_dir="data/raw/")
         # Should have inherited methods from POPANEDataLoader
         self.assertTrue(hasattr(db, 'get_study_metadata'))
         self.assertTrue(hasattr(db, 'get_subject_ids'))
@@ -218,7 +218,7 @@ class TestPOPANEDBCreateTable(unittest.TestCase):
         """Test that create_table executes proper CREATE TABLE query"""
         mock_db = MagicMock()
 
-        db_instance = POPANEDB(data_dir="data/raw/")
+        db_instance = POPANEDB(raw_dir="data/raw/")
         columns = {"id": "INTEGER", "name": "VARCHAR", "value": "DOUBLE"}
 
         db_instance.create_table(mock_db, "test_table", columns)
@@ -233,7 +233,7 @@ class TestPOPANEDBCreateTable(unittest.TestCase):
         """Test that create_table includes all specified columns"""
         mock_db = MagicMock()
 
-        db_instance = POPANEDB(data_dir="data/raw/")
+        db_instance = POPANEDB(raw_dir="data/raw/")
         columns = {"col1": "INTEGER", "col2": "VARCHAR"}
 
         db_instance.create_table(mock_db, "my_table", columns)
@@ -256,7 +256,7 @@ class TestPOPANEDBConnectDB(unittest.TestCase):
         mock_conn = MagicMock()
         mock_connect.return_value = mock_conn
 
-        db_instance = POPANEDB(data_dir="data/raw/")
+        db_instance = POPANEDB(raw_dir="data/raw/")
         result = db_instance.connect_db()
 
         mock_connect.assert_called_once()
@@ -269,7 +269,7 @@ class TestPOPANEDBConnectDB(unittest.TestCase):
         mock_conn = MagicMock()
         mock_connect.return_value = mock_conn
 
-        db_instance = POPANEDB(data_dir="data/raw/")
+        db_instance = POPANEDB(raw_dir="data/raw/")
         db_instance.connect_db()
 
         call_kwargs = mock_connect.call_args[1]
@@ -293,7 +293,7 @@ class TestPOPANEDBCreateDBMethod(unittest.TestCase):
         mock_loader.return_value = mock_loader_instance
         mock_loader_instance.get_study_metadata.return_value = None
 
-        db_instance = POPANEDB(data_dir="data/raw/")
+        db_instance = POPANEDB(raw_dir="data/raw/")
         result = db_instance.createDB()
 
         mock_connect.assert_called_once()
@@ -309,7 +309,7 @@ class TestPOPANEDBCreateDBMethod(unittest.TestCase):
         mock_loader.return_value = mock_loader_instance
         mock_loader_instance.get_study_metadata.return_value = None
 
-        db_instance = POPANEDB(data_dir="data/raw/")
+        db_instance = POPANEDB(raw_dir="data/raw/")
         db_instance.createDB()
 
         # Check that threads were set
@@ -326,7 +326,7 @@ class TestPOPANEDBCreateDBMethod(unittest.TestCase):
         mock_loader.return_value = mock_loader_instance
         mock_loader_instance.get_study_metadata.return_value = None
 
-        db_instance = POPANEDB(data_dir="data/raw/")
+        db_instance = POPANEDB(raw_dir="data/raw/")
         result = db_instance.createDB()
 
         self.assertEqual(result, mock_db)

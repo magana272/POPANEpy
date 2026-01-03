@@ -16,19 +16,7 @@ from os.path import isfile
 from os.path import join
 from pickle import load, dump
 from typing import cast, TYPE_CHECKING
-
-# Handle Traversable import for different Python versions
-try:
-    from importlib.resources.abc import Traversable
-except (ImportError, ModuleNotFoundError):
-    try:
-        from importlib.abc import Traversable
-    except ImportError:
-        # Fallback for typing purposes
-        if TYPE_CHECKING:
-            from typing import Any as Traversable
-        else:
-            Traversable = object
+from importlib.resources.abc import Traversable
 
 import pandas as pd
 import polars as pl

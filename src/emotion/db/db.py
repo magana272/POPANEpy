@@ -11,7 +11,7 @@ from emotion.dataloader.popaneloader import POPANEDataLoader
 class POPANEDB(POPANEDataLoader):
     __downloads_completed: bool = False
     __number_of_downloads: int = 0
-    __duckdbpath: str = "data/processed/propane_emotion.db"
+    __duckdbpath: str = "data/processed/popane_emotion.db"
     __threadpool: ThreadPoolExecutor | None = None
     study1colums = "timestamp", "affect", "ECG", "EDA", "temp", "respiration", "SBP", "DBP", "marker"
     s1_dtype = ["DOUBLE", "DOUBLE", "DOUBLE", "DOUBLE",
@@ -45,22 +45,31 @@ class POPANEDB(POPANEDataLoader):
         7: (study7columns, s7_dtype),
     }
 
-    def __init__(self,
-                 data_dir: str | None = "data/raw/"):
+    def __init__(self, raw_dir: str = "data/raw/",
+                 db_dir = "data/precessed/",
+                 db_name: str = "popane_emotion.db") -> None:
+        """
+        raw_dir :
+            where is raw data saved
+        db_path :
+            where is the db to be saved
+
+
+        """
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s [%(levelname)s] %(message)s',
             handlers=[
-                logging.FileHandler('data/processed/db_creation.log', mode='w'),
+                logging.FileHandler(db_dir + 'db_creation.log', mode='w'),
                 logging.StreamHandler()
             ]
         )
-        super().__init__(data_dir)
+        super().__init__(raw_dir)
 
     def createDB(self):
         start_time = datetime.now()
         logging.info("Starting POPANE database creation")
-
+        # create __duckdbpath directory if it doesn't exist
         db = duckdb.connect(database=self.__duckdbpath, read_only=False)
         db.execute(f"SET threads TO {os.cpu_count()}")
 
@@ -88,7 +97,7 @@ class POPANEDB(POPANEDataLoader):
                 logging.info(f"Study {study_number}: {len(file_paths)} files")
                 if file_paths:
                     db.execute(f"""
-                               CREATE TABLE IF NOT EXISTS study{study_number} AS 
+                               CREATE TABLE IF NOT EXISTS study{study_number} AS
                                 SELECT
                                     CAST(NULL AS INTEGER) AS Subject_ID,
                                     *
@@ -144,9 +153,9 @@ class POPANEDB(POPANEDataLoader):
                     {subject_id} AS Subject_ID,
                     *
                 FROM read_csv_auto(
-                    '{studypath}', 
-                    skip=9, 
-                    header=true, 
+                    '{studypath}',
+                    skip=9,
+                    header=true,
                     delim=',',
                     sample_size=-1,
                     parallel=true,
@@ -167,8 +176,8 @@ def main():
         zip(createDB.study1colums, createDB.s1_dtype)))
     study1 = "study1"
     db.execute(f"""
-        INSERT INTO {study1} 
-        SELECT * FROM read_csv('data/raw/study1/1_Baseline.csv', 
+        INSERT INTO {study1}
+        SELECT * FROM read_csv('data/raw/study1/1_Baseline.csv',
             skip=9,
             header=true,
             delim=',',
